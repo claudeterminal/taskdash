@@ -348,24 +348,24 @@
   function lum(hex){ const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255; return (0.299*r+0.587*g+0.114*b)/255; }
   function fgFor(hex){ return lum(hex)>0.52 ? '#191033' : '#fff'; } // dark text on light/aqua/yellow faces
   const THEMES=[
-    { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', building:'30,15,60',
-      road:'#241a3d', side:'#15243a', laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
+    { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', sun2:'#ffcf73', horizon:'city', building:'30,15,60',
+      road:'#241a3d', side:'#15243a', water:false, laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
       ob:['#16e0bd','#ff3b6b','#7b5cff','#ff924d','#ffd23f'], round:4 },
-    { name:'Jungle', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', building:'10,38,18',
-      road:'#5a3d22', side:'#1f4a22', laneLine:'rgba(220,255,180,.20)', dash:'rgba(180,140,80,.45)', rail:'#3c2a16',
+    { name:'Jungle River', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17',
+      road:'#1f6e57', side:'#1f4a22', water:true, laneLine:'rgba(220,255,200,.22)', dash:'rgba(180,140,80,.45)', rail:'#2c5a36',
       ob:['#7a4a22','#9c6b2e','#3f8a2f','#5fae3a','#c9a35a'], round:11 },
-    { name:'Desert', sky:['#c9743c','#e3a857','#ffe3a8'], sun:'255,235,180', building:'120,72,32',
-      road:'#caa46a', side:'#9c7b46', laneLine:'rgba(255,240,200,.22)', dash:'rgba(150,100,50,.45)', rail:'#8a6a3a',
+    { name:'Desert', sky:['#c9743c','#e3a857','#ffe3a8'], sun:'255,235,180', sun2:'#ffe08a', horizon:'cactus', building:'120,72,32',
+      road:'#caa46a', side:'#9c7b46', water:false, laneLine:'rgba(255,240,200,.22)', dash:'rgba(150,100,50,.45)', rail:'#8a6a3a',
       ob:['#c0653a','#d98a4a','#e0b06a','#6e9a4a','#a85a3a'], round:5 },
-    { name:'Glacier', sky:['#3f6ea8','#7fb0e0','#dff2ff'], sun:'230,245,255', building:'90,120,160',
-      road:'#8fb8d8', side:'#cfe6f5', laneLine:'rgba(255,255,255,.5)', dash:'rgba(120,170,210,.55)', rail:'#7fa6c8',
+    { name:'Glacier', sky:['#3f6ea8','#7fb0e0','#dff2ff'], sun:'230,245,255', sun2:null, horizon:'mountains', building:'86,116,156',
+      road:'#5f93c4', side:'#cfe6f5', water:true, laneLine:'rgba(255,255,255,.5)', dash:'rgba(120,170,210,.55)', rail:'#7fa6c8',
       ob:['#4dd0ff','#9fe8ff','#6ea8ff','#e6f7ff','#7fd0c8'], round:9 },
-    { name:'Volcano', sky:['#2a0d0d','#7a1d10','#ff6a2a'], sun:'255,140,60', building:'20,8,8',
-      road:'#2a1a1a', side:'#3a1410', laneLine:'rgba(255,150,80,.30)', dash:'rgba(255,90,30,.6)', rail:'#5a2418',
+    { name:'Volcano', sky:['#2a0d0d','#7a1d10','#ff6a2a'], sun:'255,140,60', sun2:null, horizon:'volcano', building:'22,9,9',
+      road:'#2a1a1a', side:'#3a1410', water:false, laneLine:'rgba(255,150,80,.30)', dash:'rgba(255,90,30,.6)', rail:'#5a2418',
       ob:['#ff5a2a','#ff8a3a','#ffb84d','#c0392b','#4a2a2a'], round:4 },
-    { name:'Cosmic', sky:['#0d0b2a','#2a1a6a','#6a3fb0'], sun:'180,160,255', building:'20,15,50',
-      road:'#16122e', side:'#0e0a24', laneLine:'rgba(180,160,255,.30)', dash:'rgba(120,90,255,.5)', rail:'#3a2b6c',
-      ob:['#b06bff','#ff6fb0','#6be3ff','#b6ff6b','#ffd23f'], round:14 },
+    { name:'Cosmic', sky:['#0d0b2a','#2a1a6a','#6a3fb0'], sun:'180,160,255', sun2:null, horizon:'cosmic', building:'20,15,50',
+      road:'#16122e', side:'#0e0a24', water:false, laneLine:'rgba(180,160,255,.30)', dash:'rgba(120,90,255,.5)', rail:'#3a2b6c',
+      ob:['#b06bff','#7b5cff','#ff6fb0','#6be3ff','#c0a0ff'], round:14 },
   ];
   function currentLevel(){ return Math.floor(runTime/10000)+1; }   // level 1 for first 10s, +1 every 10s
   function theme(){ return THEMES[(currentLevel()-1)%THEMES.length]; }
@@ -856,12 +856,86 @@
     sg.addColorStop(0,'rgba('+T.sun+',.9)');
     sg.addColorStop(1,'rgba('+T.sun+',0)');
     ctx.fillStyle=sg; ctx.beginPath();ctx.arc(CX,HORIZON,260,0,Math.PI*2);ctx.fill();
-    // skyline silhouette
-    ctx.fillStyle='rgba('+T.building+',.85)';
-    let bx=0;
-    const seed=[60,120,40,180,90,140,70,160,50,130,80];
-    let i=0;
-    while(bx<W){const bw=28+(seed[i%seed.length]%40);const bh=40+(seed[i%seed.length]);ctx.fillRect(bx,HORIZON-bh,bw,bh);bx+=bw+10;i++;}
+    // solid sun disc (for themes that have one), drawn behind the silhouette
+    if(T.sun2){
+      const r=70;
+      ctx.fillStyle=T.sun2;
+      ctx.beginPath();ctx.arc(W*0.66,HORIZON-r*0.55,r,0,Math.PI*2);ctx.fill();
+    }
+    drawHorizon(T);
+  }
+
+  // themed silhouette along the horizon — buildings, rainforest, cactuses, mountains, volcano, space
+  function drawHorizon(T){
+    const base=HORIZON, B='rgba('+T.building+',';
+    const time=performance.now();
+    if(T.horizon==='city'){
+      ctx.fillStyle=B+'.85)';
+      let bx=0; const seed=[60,120,40,180,90,140,70,160,50,130,80]; let i=0;
+      while(bx<W){const bw=28+(seed[i%seed.length]%40);const bh=40+(seed[i%seed.length]);ctx.fillRect(bx,base-bh,bw,bh);bx+=bw+10;i++;}
+    } else if(T.horizon==='trees'){
+      // layered rainforest canopy
+      ctx.fillStyle=B+'.6)';                                  // distant back row
+      let bx=-10,i=0; const hs=[60,90,70,110,80];
+      while(bx<W){const h=hs[i%hs.length]*0.7,cw=50;blob(bx,base-h,cw);bx+=cw*0.7;i++;}
+      ctx.fillStyle=B+'.92)';                                 // front trees
+      bx=-20;i=0; const fh=[120,150,100,170,130,110];
+      while(bx<W){const h=fh[i%fh.length],cw=60+(i*23%30);
+        ctx.fillRect(bx+cw*0.42,base-h*0.55,Math.max(6,cw*0.12),h*0.55); // trunk
+        blob(bx+cw*0.5,base-h*0.55,cw*0.5);                              // canopy
+        bx+=cw*0.78;i++;}
+    } else if(T.horizon==='cactus'){
+      // distant mesas
+      ctx.fillStyle=B+'.45)';
+      [[40,70,120],[300,90,150],[470,60,100]].forEach(([x,h,w])=>{ctx.fillRect(x,base-h,w,h);});
+      // saguaro cactuses
+      ctx.fillStyle='rgba(74,120,52,.92)';
+      let bx=24,i=0;
+      while(bx<W){const ch=80+(i*53%70),w=15;
+        ctx.fillRect(bx-w/2,base-ch,w,ch); ctx.beginPath();ctx.arc(bx,base-ch,w/2,Math.PI,0);ctx.fill(); // rounded top
+        const ay=base-ch*0.62; ctx.fillRect(bx-w/2-12,ay,12,9); ctx.fillRect(bx-w/2-12,ay-22,9,22);     // left arm
+        const by=base-ch*0.46; ctx.fillRect(bx+w/2,by,12,9); ctx.fillRect(bx+w/2+3,by-26,9,26);          // right arm
+        bx+=88+(i*31%46);i++;}
+    } else if(T.horizon==='mountains'){
+      // snowy ridge
+      ctx.fillStyle=B+'.9)';
+      const hs=[120,200,150,230,170,210,140,190]; let px=-20,k=0;
+      ctx.beginPath();ctx.moveTo(-20,base);
+      while(px<W+40){const h=hs[k%hs.length];ctx.lineTo(px+30,base-h);ctx.lineTo(px+70,base-h*0.5);px+=80;k++;}
+      ctx.lineTo(W+40,base);ctx.closePath();ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.9)';                   // snow caps
+      px=-20;k=0; while(px<W+40){const h=hs[k%hs.length],tx=px+30,ty=base-h;
+        ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx-11,ty+24);ctx.lineTo(tx+11,ty+24);ctx.closePath();ctx.fill();px+=80;k++;}
+    } else if(T.horizon==='volcano'){
+      ctx.fillStyle=B+'.95)';
+      [[80,120,140],[W-90,110,150]].forEach(([x,h,w])=>{ctx.beginPath();ctx.moveTo(x-w/2,base);ctx.lineTo(x,base-h);ctx.lineTo(x+w/2,base);ctx.closePath();ctx.fill();});
+      const vx=CX,vh=210,vw=170;                              // central cone
+      ctx.beginPath();ctx.moveTo(vx-vw,base);ctx.lineTo(vx-34,base-vh);ctx.lineTo(vx+34,base-vh);ctx.lineTo(vx+vw,base);ctx.closePath();ctx.fill();
+      const glow=0.6+0.25*Math.sin(time*0.004);
+      ctx.fillStyle='rgba(255,130,40,'+glow+')';ctx.fillRect(vx-34,base-vh,68,9); // crater glow
+      ctx.strokeStyle='rgba(255,90,20,.85)';ctx.lineWidth=4;                       // lava streaks
+      ctx.beginPath();ctx.moveTo(vx-10,base-vh+6);ctx.lineTo(vx-26,base-vh*0.45);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(vx+12,base-vh+6);ctx.lineTo(vx+30,base-vh*0.55);ctx.stroke();
+    } else if(T.horizon==='cosmic'){
+      ctx.fillStyle='rgba(255,255,255,.85)';                  // stars
+      [[40,60],[120,30],[210,86],[300,42],[388,70],[150,120],[470,28],[520,96],[250,24]].forEach(([sx,sy])=>{const tw=0.4+0.6*Math.abs(Math.sin(time*0.002+sx));ctx.globalAlpha=tw;ctx.fillRect(sx,sy,2,2);});
+      ctx.globalAlpha=1;
+      ctx.fillStyle='#7b5cff';                                // ringed planet
+      ctx.beginPath();ctx.arc(W*0.72,base-96,46,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='rgba(190,170,255,.75)';ctx.lineWidth=6;
+      ctx.beginPath();ctx.ellipse(W*0.72,base-96,78,18,-0.4,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle='#9a78d8';                                // moon
+      ctx.beginPath();ctx.arc(W*0.2,base-140,20,0,Math.PI*2);ctx.fill();
+    }
+  }
+  // helper: bumpy foliage blob made of overlapping circles
+  function blob(cx,cy,r){
+    ctx.beginPath();
+    ctx.arc(cx,cy,r*0.62,0,Math.PI*2);
+    ctx.arc(cx-r*0.5,cy+r*0.18,r*0.45,0,Math.PI*2);
+    ctx.arc(cx+r*0.5,cy+r*0.18,r*0.45,0,Math.PI*2);
+    ctx.arc(cx,cy-r*0.4,r*0.4,0,Math.PI*2);
+    ctx.fill();
   }
 
   function drawGround(){
@@ -872,8 +946,15 @@
     // ground sides fill first
     ctx.fillStyle=T.side;
     ctx.fillRect(0,HORIZON,W,H-HORIZON);
-    // road
-    ctx.fillStyle=T.road;
+    // road / river surface
+    if(T.water){
+      const wg=ctx.createLinearGradient(0,far.y,0,GROUND_Y+60);
+      wg.addColorStop(0,shade(T.road,-22));
+      wg.addColorStop(1,shade(T.road,22));
+      ctx.fillStyle=wg;
+    } else {
+      ctx.fillStyle=T.road;
+    }
     ctx.beginPath();
     ctx.moveTo(CX-halfNear,GROUND_Y+60);
     ctx.lineTo(CX+halfNear,GROUND_Y+60);
@@ -888,17 +969,30 @@
       const a=project(lx,0),b=project(lx,FAR);
       ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
     }
-    // moving rail dashes in each lane for speed feel
-    for(const lx of LANES){
-      ctx.strokeStyle=T.dash;
-      for(let z=-(stripeOffset);z<FAR;z+=240){
+    if(T.water){
+      // flowing ripples sweeping toward the camera
+      const t=performance.now();
+      for(let z=-((stripeOffset)%140);z<FAR;z+=140){
         if(z<0)continue;
-        const t1=project(lx,z), t2=project(lx,z+90);
-        ctx.lineWidth=Math.max(1,7*t1.s);
-        ctx.beginPath();ctx.moveTo(t1.x,t1.y);ctx.lineTo(t2.x,t2.y);ctx.stroke();
+        const l=project(-1.55,z), r=project(1.55,z);
+        ctx.strokeStyle='rgba(255,255,255,'+(0.05+0.22*l.s/near.s)+')';
+        ctx.lineWidth=Math.max(1,3*l.s);
+        const midY=(l.y+r.y)/2 - 7*l.s*Math.sin(z*0.02+t*0.003);
+        ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.quadraticCurveTo(CX,midY,r.x,r.y);ctx.stroke();
+      }
+    } else {
+      // moving rail dashes in each lane for speed feel
+      for(const lx of LANES){
+        ctx.strokeStyle=T.dash;
+        for(let z=-(stripeOffset);z<FAR;z+=240){
+          if(z<0)continue;
+          const t1=project(lx,z), t2=project(lx,z+90);
+          ctx.lineWidth=Math.max(1,7*t1.s);
+          ctx.beginPath();ctx.moveTo(t1.x,t1.y);ctx.lineTo(t2.x,t2.y);ctx.stroke();
+        }
       }
     }
-    // outer rails
+    // outer rails / banks
     for(const lx of [-1.6,1.6]){
       const a=project(lx,0),b=project(lx,FAR);
       ctx.strokeStyle=T.rail;ctx.lineWidth=Math.max(2,10*a.s);
