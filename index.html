@@ -59,6 +59,7 @@
   .lock-note{font-size:14px;opacity:.8;font-weight:500;}
   .countdown{font-family:'Bungee',cursive;font-size:clamp(44px,14vw,80px);color:var(--cool);
     letter-spacing:2px;text-shadow:0 0 26px rgba(22,224,189,.55);}
+  .voice-toggle{font-size:14px;padding:9px 20px;}
   .controls{font-size:13px;opacity:.7;line-height:1.7;margin-top:4px;font-weight:500;}
   .controls b{color:var(--cool);}
   .big-score{font-family:'Bungee',cursive;font-size:clamp(46px,15vw,90px);color:#fff;text-shadow:0 0 28px rgba(22,224,189,.6);}
@@ -129,6 +130,7 @@
       <div class="hit-task" id="hitTask">—</div>
       <div class="lock-note">Go get it done. You can run again in</div>
       <div class="countdown" id="countdown">5:00</div>
+      <button class="btn ghost voice-toggle" id="voiceBtn">🔊 Voice on</button>
       <div class="stat-row">
         <div class="stat"><span class="label">Score</span><span class="v" id="finalScore">0</span></div>
         <div class="stat"><span class="label">Coins</span><span class="v gold" id="finalCoins">0</span></div>
@@ -175,6 +177,27 @@
   const labelTask = ()=> tasks.length ? tasks[Math.floor(Math.random()*tasks.length)] : '';
   let hitTask = '';
   let countdownTimer = null, countdownLeft = 0;
+  let voiceMuted = false;
+
+  // spoken reminders during the lockout (Web Speech API)
+  function speak(text){
+    if(voiceMuted || !('speechSynthesis' in window)) return;
+    try{
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1; u.pitch = 1; u.volume = 1;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+  function stopSpeech(){ try{ window.speechSynthesis.cancel(); }catch(e){} }
+  function speakUpdate(){
+    if(voiceMuted) return;
+    const m=Math.floor(countdownLeft/60), s=countdownLeft%60;
+    let t = m>0 ? `${m} minute${m!==1?'s':''}` : '';
+    if(s>0) t += (t?' and ':'') + `${s} second${s!==1?'s':''}`;
+    if(!t) t = 'almost no time';
+    speak(`${hitTask || 'your task'}. ${t} left.`);
+  }
 
   let player, obstacles, coins, particles;
   let speed, baseSpeed, dist, score, coinCount, best=0, bestCoins=0;
@@ -380,6 +403,7 @@
   const doneBtn=document.getElementById('doneBtn');
   doneBtn.onclick=()=>{
     if(doneBtn.disabled) return;
+    stopSpeech();
     // mark the crashed task complete and remove it from the pool
     const i = tasks.indexOf(hitTask);
     if(i>=0) tasks.splice(i,1);
@@ -389,6 +413,15 @@
       startGame();
     }
   };
+
+  const voiceBtn=document.getElementById('voiceBtn');
+  voiceBtn.addEventListener('click',e=>{
+    e.stopPropagation();
+    voiceMuted=!voiceMuted;
+    voiceBtn.textContent = voiceMuted ? '🔇 Voice off' : '🔊 Voice on';
+    if(voiceMuted) stopSpeech();
+    else if(state===STATE.OVER) speakUpdate();
+  });
 
   const muteBtn=document.getElementById('muteBtn');
   muteBtn.addEventListener('click',e=>{
@@ -401,6 +434,7 @@
 
   function backToSetup(message){
     if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}
+    stopSpeech();
     state=STATE.START; SFX.stopBg();
     if(message) document.getElementById('setupSub').textContent=message;
     if(tasks.length===0) taskInputs.forEach(i=>i.value='');
@@ -413,6 +447,7 @@
 
   function startGame(){
     reset();
+    stopSpeech();
     state=STATE.PLAY;
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('overScreen').classList.add('hidden');
@@ -472,13 +507,16 @@
     doneBtn.disabled=true; doneBtn.textContent='Do it first…';
     cd.textContent=fmtTime(countdownLeft);
     if(countdownTimer)clearInterval(countdownTimer);
+    speakUpdate();   // announce immediately
     countdownTimer=setInterval(()=>{
       countdownLeft--;
       cd.textContent=fmtTime(Math.max(0,countdownLeft));
+      if(countdownLeft>0 && countdownLeft%15===0) speakUpdate();  // every 15s
       if(countdownLeft<=0){
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
         doneBtn.disabled=false; doneBtn.textContent='Done — Run Again';
+        speak(`Time's up. If ${hitTask || 'your task'} is done, tap done to run again.`);
       }
     },1000);
   }
