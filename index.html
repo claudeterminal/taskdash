@@ -105,8 +105,8 @@
 
   /* HUD */
   #hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
-    padding:20px 16px 16px 150px;z-index:4;pointer-events:none;font-family:'Bungee',cursive;}
-  #topLeftCtrls{position:absolute;top:18px;left:18px;z-index:9;display:flex;flex-direction:row;gap:7px;}
+    padding:16px 18px;z-index:4;pointer-events:none;font-family:'Bungee',cursive;}
+  #sndCtrls{position:absolute;bottom:14px;right:14px;z-index:9;display:flex;flex-direction:row;gap:7px;}
   .ctrl-toggle{font-family:'Fredoka',sans-serif;font-weight:700;font-size:12px;color:#fff;
     background:rgba(12,6,28,.62);border:2px solid rgba(255,255,255,.2);border-radius:11px;
     padding:6px 9px;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;line-height:1;
@@ -144,7 +144,7 @@
 <div id="wrap">
   <div id="stage">
     <canvas id="game"></canvas>
-    <div id="topLeftCtrls">
+    <div id="sndCtrls">
       <button id="soundBtn" class="ctrl-toggle" type="button" aria-label="Music on or off">🔊 Sound</button>
       <button id="voiceBtn" class="ctrl-toggle" type="button" aria-label="Voice on or off">🗣️ Voice</button>
     </div>
@@ -434,69 +434,59 @@
 
   // ---- Sound (Web Audio, fully synthesized) ----
   const SFX = (()=>{
-    let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0;
-    // Original cinematic-orchestra style: lush string pads, brass, bubbly harp arpeggios,
-    // glockenspiel sparkles, timpani hits and crescendo swells. A different song opens each visit.
+    let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0, melCursor=8;
+    // Original cinematic-orchestra style. Each song is an 8-bar form (A + B) and the melody is
+    // generated to wander (anchored to chord tones on strong beats) so it doesn't loop the same line.
     const STEPS=8;
+    function majorScale(root){ const st=[0,2,4,5,7,9,11],out=[]; for(let o=0;o<3;o++) for(const k of st) out.push(root*Math.pow(2,(o*12+k)/12)); return out; }
+    const C=[261.63,329.63,392.00], G=[392.00,493.88,587.33], Am=[440.00,523.25,659.25], F=[349.23,440.00,523.25];
+    const D=[293.66,369.99,440.00], A=[220.00,277.18,329.63], Bm=[246.94,293.66,369.99], Gg=[196.00,246.94,293.66];
+    const Em=[329.63,392.00,493.88], Cc=[261.63,329.63,392.00];
     const SONGS=[
-      // "Heroic Sunrise" — C major (I V vi IV)
-      { ms:150, prog:[
-        {bass:130.81, ch:[261.63,329.63,392.00]},
-        {bass:98.00,  ch:[392.00,493.88,587.33]},
-        {bass:110.00, ch:[440.00,523.25,659.25]},
-        {bass:87.31,  ch:[349.23,440.00,523.25]} ],
-        mel:[523.25,587.33,659.25,783.99,659.25,587.33,523.25,0] },
-      // "Sparkle Waltz" — G major
-      { ms:156, prog:[
-        {bass:98.00,  ch:[392.00,493.88,587.33]},
-        {bass:146.83, ch:[293.66,369.99,440.00]},
-        {bass:82.41,  ch:[329.63,392.00,493.88]},
-        {bass:130.81, ch:[261.63,329.63,392.00]} ],
-        mel:[587.33,659.25,783.99,659.25,587.33,493.88,440.00,0] },
-      // "Grand Adventure" — F major, dramatic
-      { ms:162, prog:[
-        {bass:87.31,  ch:[349.23,440.00,523.25]},
-        {bass:130.81, ch:[261.63,329.63,392.00]},
-        {bass:146.83, ch:[293.66,349.23,440.00]},
-        {bass:116.54, ch:[233.08,293.66,349.23]} ],
-        mel:[523.25,587.33,698.46,587.33,523.25,440.00,392.00,0] },
-      // "Soaring Magic" — D major
-      { ms:150, prog:[
-        {bass:146.83, ch:[293.66,369.99,440.00]},
-        {bass:110.00, ch:[220.00,277.18,329.63]},
-        {bass:123.47, ch:[246.94,293.66,369.99]},
-        {bass:98.00,  ch:[196.00,246.94,293.66]} ],
-        mel:[587.33,659.25,739.99,880.00,739.99,659.25,587.33,0] },
-      // "Festival Triumph" — A major
-      { ms:152, prog:[
-        {bass:110.00, ch:[220.00,277.18,329.63]},
-        {bass:164.81, ch:[329.63,415.30,493.88]},
-        {bass:184.99, ch:[369.99,440.00,554.37]},
-        {bass:146.83, ch:[293.66,369.99,440.00]} ],
-        mel:[659.25,739.99,659.25,554.37,493.88,440.00,329.63,0] },
+      // "Heroic Sunrise" — C major:  C G Am F | C G F C
+      { ms:152, scale:majorScale(261.63), prog:[
+        {bass:130.81,ch:C},{bass:98.00,ch:G},{bass:110.00,ch:Am},{bass:87.31,ch:F},
+        {bass:130.81,ch:C},{bass:98.00,ch:G},{bass:87.31,ch:F},{bass:130.81,ch:C} ] },
+      // "Soaring Magic" — D major:  D A Bm G | D A G A
+      { ms:150, scale:majorScale(293.66), prog:[
+        {bass:146.83,ch:D},{bass:110.00,ch:A},{bass:123.47,ch:Bm},{bass:98.00,ch:Gg},
+        {bass:146.83,ch:D},{bass:110.00,ch:A},{bass:98.00,ch:Gg},{bass:110.00,ch:A} ] },
+      // "Festival Triumph" — G major:  G D Em C | G Em C D
+      { ms:156, scale:majorScale(196.00), prog:[
+        {bass:98.00,ch:G},{bass:146.83,ch:D},{bass:82.41,ch:Em},{bass:130.81,ch:Cc},
+        {bass:98.00,ch:G},{bass:82.41,ch:Em},{bass:130.81,ch:Cc},{bass:146.83,ch:D} ] },
     ];
+    function nearestIndex(arr,f){ let bi=0,bd=1e9; for(let i=0;i<arr.length;i++){const d=Math.abs(arr[i]-f); if(d<bd){bd=d;bi=i;}} return bi; }
     function playStep(){
       const song=SONGS[songIdx];
       const local=step-songStartStep;
-      const bars=song.prog.length;
+      const bars=song.prog.length;          // 8-bar form
       const bar=Math.floor(local/STEPS)%bars;
       const s=local%STEPS;
       const c=song.prog[bar];
+      const scale=song.scale;
       if(!muted && actx){
         const barDur=STEPS*song.ms/1000;
-        if(s===0){ padChord(c.ch, barDur*0.98); brass(c.ch[0],0.5); timp(c.bass); }   // strings + brass + drum on the downbeat
-        if(s===4){ brass(c.ch[1],0.4); timp(c.bass); }                                // mid-bar pulse for drive
-        const arp=[c.ch[0],c.ch[1],c.ch[2],c.ch[2]*2,c.ch[1]*2,c.ch[2],c.ch[1],c.ch[0]*2];
-        harp(arp[s]);                                                                 // bubbly climbing arpeggio
-        if(s%2===1) noise(0.02,{vol:0.028,filterFreq:9000,type:'highpass'});          // light shaker
-        if(s===2||s===6) bell(c.ch[2]*2);                                             // glockenspiel sparkle
-        const mf=song.mel[s];
-        if(mf>0) lead(mf,0.3);                                                        // soaring melody lead
-        if(s===STEPS-1 && bar===bars-1) swell();                                      // crescendo swell into the loop
+        if(s===0){ padChord(c.ch, barDur*0.98); brass(c.ch[0],0.5); timp(c.bass); }     // strings + brass + drum downbeat
+        if(s===4){ timp(c.bass); if(bar%2===1) brass(c.ch[1],0.42); }                   // mid-bar pulse
+        // bubbly arpeggio — climb on even bars, cascade on odd bars, so it keeps changing
+        const pool=[c.ch[0],c.ch[1],c.ch[2],c.ch[2]*2];
+        const pat=(bar%2===0)?[0,1,2,3,2,3,1,2]:[3,2,1,0,2,1,3,1];
+        if(Math.random()<0.9) harp(pool[pat[s]]);
+        if(s%2===1 && Math.random()<0.55) noise(0.02,{vol:0.024,filterFreq:9000,type:'highpass'}); // light shaker
+        if((s===2||s===6) && Math.random()<0.6) bell(c.ch[2]*2);                        // sparkle
+        // evolving melody: anchor to a chord tone on strong beats, wander by small steps otherwise
+        if(Math.random()<0.72){
+          if(s%4===0){ melCursor = nearestIndex(scale, c.ch[s===0?0:1]); if(melCursor<7) melCursor+=7; } // anchor a chord tone in a singing octave
+          else { const mv=[-2,-1,-1,1,1,2,3][Math.floor(Math.random()*7)]; melCursor=Math.max(5,Math.min(16,melCursor+mv)); }
+          lead(scale[melCursor], 0.28);
+          if(s%4!==0 && Math.random()<0.18){ const g=Math.min(16,melCursor+2); lead(scale[g],0.14); } // quick ornament
+        }
+        if(s===STEPS-1 && bar===bars-1) swell();                                        // crescendo into the loop
       }
       step++;
-      if(step-songStartStep >= Math.round(75000/song.ms)){ // roll to a new song every ~75s for variety
-        songIdx=(songIdx+1)%SONGS.length; songStartStep=step;
+      if(step-songStartStep >= Math.round(95000/song.ms)){ // a different song every ~95s
+        songIdx=(songIdx+1)%SONGS.length; songStartStep=step; melCursor=Math.floor(SONGS[songIdx].scale.length/2);
       }
     }
     function ensure(){
