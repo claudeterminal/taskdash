@@ -80,7 +80,7 @@
     line-height:1;cursor:pointer;z-index:3;display:flex;align-items:center;justify-content:center;}
   .sched-close:hover{background:rgba(255,71,87,.85);}
   .sched-btn{font-size:13px;padding:8px 18px;}
-  .go-finish{font-size:clamp(14px,4vw,19px);font-weight:600;line-height:1.25;max-width:26ch;opacity:.9;}
+  .go-finish{font-size:clamp(20px,5.6vw,30px);font-weight:700;line-height:1.2;max-width:22ch;opacity:.95;}
   .task-name{font-family:'Bungee',cursive;color:var(--neon);font-size:clamp(28px,9vw,48px);line-height:1.05;max-width:15ch;
     text-shadow:0 5px 0 var(--hot);display:inline-block;animation:taskFlash 1.1s ease-in-out infinite;margin:2px 0;}
   @keyframes taskFlash{
@@ -249,7 +249,7 @@
 
   // spoken reminders during the lockout (Web Speech API)
   const ttsOK = ('speechSynthesis' in window) && ('SpeechSynthesisUtterance' in window);
-  let ttsVoice = null;
+  let ttsVoice = null, ttsKeep = null;
   function loadVoices(){
     if(!ttsOK) return;
     const vs = window.speechSynthesis.getVoices() || [];
@@ -261,13 +261,22 @@
     if(voiceMuted || !ttsOK) return;
     try{
       const synth = window.speechSynthesis;
-      synth.resume();           // Chrome parks the engine when idle — wake it
-      synth.cancel();           // clear any stuck/queued utterance
-      const u = new SpeechSynthesisUtterance(text);
-      if(ttsVoice) u.voice = ttsVoice;
-      u.rate = 1; u.pitch = 1; u.volume = 1;
-      synth.speak(u);
-      setTimeout(()=>{ try{ synth.resume(); }catch(e){} }, 90); // nudge in case it was asleep
+      if(!ttsVoice) loadVoices();          // Chrome loads voices async — grab them if we haven't yet
+      synth.resume();                       // Chrome parks the engine when idle — wake it
+      synth.cancel();                       // clear any stuck/queued utterance
+      // Chrome drops audio if you speak in the same tick as cancel, and GCs the utterance mid-speech,
+      // so speak just after and keep a live reference.
+      setTimeout(()=>{
+        try{
+          const u = new SpeechSynthesisUtterance(text);
+          if(ttsVoice) u.voice = ttsVoice;
+          u.rate = 1; u.pitch = 1; u.volume = 1;
+          ttsKeep = u;
+          synth.resume();
+          synth.speak(u);
+          setTimeout(()=>{ try{ synth.resume(); }catch(e){} }, 120); // nudge in case it was asleep
+        }catch(e){}
+      }, 80);
     }catch(e){}
   }
   function stopSpeech(){ try{ window.speechSynthesis.cancel(); }catch(e){} }
@@ -392,7 +401,7 @@
     { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', sun2:'#ffcf73', horizon:'city', building:'30,15,60',
       road:'#241a3d', side:'#15243a', water:false, laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
       ob:['#16e0bd','#ff3b6b','#7b5cff','#ff924d','#ffd23f'], round:4 },
-    { name:'Jungle River', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17',
+    { name:'Jungle River', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17', grid:false,
       road:'#1f6e57', side:'#1f4a22', water:true, laneLine:'rgba(220,255,200,.22)', dash:'rgba(180,140,80,.45)', rail:'#2c5a36',
       ob:['#8a5a2a','#a9763a','#c9a35a','#6b3f1c','#b5853f'], round:11 },
     { name:'Desert', sky:['#c9743c','#e3a857','#ffe3a8'], sun:'255,235,180', sun2:'#ffe08a', horizon:'cactus', building:'120,72,32',
@@ -435,58 +444,61 @@
   // ---- Sound (Web Audio, fully synthesized) ----
   const SFX = (()=>{
     let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0, melCursor=8;
-    // Original cinematic-orchestra style. Each song is an 8-bar form (A + B) and the melody is
-    // generated to wander (anchored to chord tones on strong beats) so it doesn't loop the same line.
+    // Chill lofi / tropical-house: warm pad, soft four-on-the-floor kick, offbeat plucky chord stabs,
+    // a mellow wandering pluck melody. A random song opens each visit and it cross-fades to a new one every ~15s.
     const STEPS=8;
     function majorScale(root){ const st=[0,2,4,5,7,9,11],out=[]; for(let o=0;o<3;o++) for(const k of st) out.push(root*Math.pow(2,(o*12+k)/12)); return out; }
     const C=[261.63,329.63,392.00], G=[392.00,493.88,587.33], Am=[440.00,523.25,659.25], F=[349.23,440.00,523.25];
     const D=[293.66,369.99,440.00], A=[220.00,277.18,329.63], Bm=[246.94,293.66,369.99], Gg=[196.00,246.94,293.66];
     const Em=[329.63,392.00,493.88], Cc=[261.63,329.63,392.00];
     const SONGS=[
-      // "Heroic Sunrise" — C major:  C G Am F | C G F C
-      { ms:152, scale:majorScale(261.63), prog:[
+      // C major:  C G Am F | C G F C
+      { ms:255, scale:majorScale(261.63), prog:[
         {bass:130.81,ch:C},{bass:98.00,ch:G},{bass:110.00,ch:Am},{bass:87.31,ch:F},
         {bass:130.81,ch:C},{bass:98.00,ch:G},{bass:87.31,ch:F},{bass:130.81,ch:C} ] },
-      // "Soaring Magic" — D major:  D A Bm G | D A G A
-      { ms:150, scale:majorScale(293.66), prog:[
+      // D major:  D A Bm G | D A G A
+      { ms:250, scale:majorScale(293.66), prog:[
         {bass:146.83,ch:D},{bass:110.00,ch:A},{bass:123.47,ch:Bm},{bass:98.00,ch:Gg},
         {bass:146.83,ch:D},{bass:110.00,ch:A},{bass:98.00,ch:Gg},{bass:110.00,ch:A} ] },
-      // "Festival Triumph" — G major:  G D Em C | G Em C D
-      { ms:156, scale:majorScale(196.00), prog:[
+      // G major:  G D Em C | G Em C D
+      { ms:262, scale:majorScale(196.00), prog:[
         {bass:98.00,ch:G},{bass:146.83,ch:D},{bass:82.41,ch:Em},{bass:130.81,ch:Cc},
         {bass:98.00,ch:G},{bass:82.41,ch:Em},{bass:130.81,ch:Cc},{bass:146.83,ch:D} ] },
     ];
     function nearestIndex(arr,f){ let bi=0,bd=1e9; for(let i=0;i<arr.length;i++){const d=Math.abs(arr[i]-f); if(d<bd){bd=d;bi=i;}} return bi; }
+    function songFade(){ // gentle dip + lift so song changes don't jump
+      if(!actx||!master||muted) return;
+      const n=actx.currentTime;
+      master.gain.cancelScheduledValues(n);
+      master.gain.setValueAtTime(master.gain.value, n);
+      master.gain.linearRampToValueAtTime(0.12, n+0.15);
+      master.gain.linearRampToValueAtTime(0.5,  n+0.6);
+    }
     function playStep(){
       const song=SONGS[songIdx];
       const local=step-songStartStep;
-      const bars=song.prog.length;          // 8-bar form
+      const bars=song.prog.length;
       const bar=Math.floor(local/STEPS)%bars;
       const s=local%STEPS;
       const c=song.prog[bar];
       const scale=song.scale;
       if(!muted && actx){
         const barDur=STEPS*song.ms/1000;
-        if(s===0){ padChord(c.ch, barDur*0.98); brass(c.ch[0],0.5); timp(c.bass); }     // strings + brass + drum downbeat
-        if(s===4){ timp(c.bass); if(bar%2===1) brass(c.ch[1],0.42); }                   // mid-bar pulse
-        // bubbly arpeggio — climb on even bars, cascade on odd bars, so it keeps changing
-        const pool=[c.ch[0],c.ch[1],c.ch[2],c.ch[2]*2];
-        const pat=(bar%2===0)?[0,1,2,3,2,3,1,2]:[3,2,1,0,2,1,3,1];
-        if(Math.random()<0.9) harp(pool[pat[s]]);
-        if(s%2===1 && Math.random()<0.55) noise(0.02,{vol:0.024,filterFreq:9000,type:'highpass'}); // light shaker
-        if((s===2||s===6) && Math.random()<0.6) bell(c.ch[2]*2);                        // sparkle
-        // evolving melody: anchor to a chord tone on strong beats, wander by small steps otherwise
-        if(Math.random()<0.72){
-          if(s%4===0){ melCursor = nearestIndex(scale, c.ch[s===0?0:1]); if(melCursor<7) melCursor+=7; } // anchor a chord tone in a singing octave
-          else { const mv=[-2,-1,-1,1,1,2,3][Math.floor(Math.random()*7)]; melCursor=Math.max(5,Math.min(16,melCursor+mv)); }
-          lead(scale[melCursor], 0.28);
-          if(s%4!==0 && Math.random()<0.18){ const g=Math.min(16,melCursor+2); lead(scale[g],0.14); } // quick ornament
+        if(s===0){ pad(c.ch, barDur*0.98); bassNote(c.bass); }   // warm pad + bass on the downbeat
+        if(s%2===0) kick();                                      // soft four-on-the-floor
+        if(s===4) bassNote(c.ch[1]/2);                           // little bass lift mid-bar
+        if(s%2===1){ stab(c.ch); hat(); }                        // tropical offbeat pluck chord + soft tick
+        if(Math.random()<0.5){                                   // mellow, sparse wandering melody
+          if(s%4===0){ melCursor=nearestIndex(scale,c.ch[s===0?0:1]); if(melCursor<7) melCursor+=7; }
+          else { const mv=[-2,-1,1,1,2][Math.floor(Math.random()*5)]; melCursor=Math.max(5,Math.min(15,melCursor+mv)); }
+          pluck(scale[melCursor]);
         }
-        if(s===STEPS-1 && bar===bars-1) swell();                                        // crescendo into the loop
       }
       step++;
-      if(step-songStartStep >= Math.round(95000/song.ms)){ // a different song every ~95s
-        songIdx=(songIdx+1)%SONGS.length; songStartStep=step; melCursor=Math.floor(SONGS[songIdx].scale.length/2);
+      const local2=step-songStartStep;
+      if(local2%STEPS===0 && local2*song.ms>=15000){             // cross-fade to a new song roughly every 15s
+        songIdx=(songIdx+1)%SONGS.length; songStartStep=step;
+        melCursor=Math.floor(SONGS[songIdx].scale.length/2); songFade();
       }
     }
     function ensure(){
@@ -516,14 +528,13 @@
       const g=actx.createGain();g.gain.value=vol;
       src.connect(f);f.connect(g);g.connect(master);src.start();
     }
-    // orchestral voices
-    function padChord(freqs,dur){ freqs.forEach(f=>{ tone(f,dur,{type:'triangle',vol:0.035,attack:0.10}); tone(f*1.004,dur,{type:'sawtooth',vol:0.018,attack:0.16}); }); }
-    function harp(f){ tone(f,0.5,{type:'triangle',vol:0.075,attack:0.004}); }
-    function bell(f){ tone(f,0.5,{type:'sine',vol:0.05,attack:0.002}); tone(f*2,0.35,{type:'sine',vol:0.018,attack:0.002}); }
-    function brass(f,dur){ tone(f,dur,{type:'sawtooth',vol:0.05,attack:0.02}); tone(f,dur,{type:'triangle',vol:0.03,attack:0.02}); }
-    function lead(f,dur){ tone(f,dur,{type:'triangle',vol:0.09,attack:0.012}); tone(f*2,dur,{type:'sine',vol:0.028,attack:0.012}); }
-    function timp(f){ tone(f,0.34,{type:'sine',vol:0.16,slideTo:f*0.5}); noise(0.05,{vol:0.06,filterFreq:240}); }
-    function swell(){ noise(0.5,{vol:0.09,filterFreq:6500,type:'highpass'}); }
+    // lofi / tropical-house voices (all tonal — no hiss)
+    function pad(freqs,dur){ freqs.forEach(f=> tone(f,dur,{type:'sine',vol:0.05,attack:0.18})); tone(freqs[0]/2,dur,{type:'sine',vol:0.035,attack:0.22}); }
+    function pluck(f){ tone(f,0.42,{type:'triangle',vol:0.085,attack:0.004}); tone(f*2.001,0.22,{type:'sine',vol:0.02,attack:0.004}); }
+    function stab(freqs){ freqs.forEach(f=> tone(f,0.2,{type:'triangle',vol:0.045,attack:0.005})); }
+    function kick(){ tone(95,0.16,{type:'sine',vol:0.16,slideTo:42}); }
+    function bassNote(f){ tone(f,0.26,{type:'triangle',vol:0.10,attack:0.004}); }
+    function hat(){ tone(1900,0.028,{type:'sine',vol:0.02}); }
     return {
       resume(){ensure();if(actx&&actx.state==='suspended')actx.resume();},
       setMuted(m){muted=m;if(master)master.gain.value=m?0:0.5;},
@@ -1071,8 +1082,8 @@
     ctx.lineTo(CX-halfFar,far.y);
     ctx.closePath();ctx.fill();
 
-    // lane divider lines (between lanes -> at +-0.5)
-    for(const lx of [-0.5,0.5]){
+    // lane divider lines (between lanes -> at +-0.5) — skipped for natural themes (jungle river)
+    if(T.grid!==false) for(const lx of [-0.5,0.5]){
       ctx.strokeStyle=T.laneLine;ctx.lineWidth=2;
       ctx.beginPath();
       const a=project(lx,0),b=project(lx,FAR);
@@ -1101,8 +1112,8 @@
         }
       }
     }
-    // outer rails / banks
-    for(const lx of [-1.6,1.6]){
+    // outer rails / banks — skipped for natural themes
+    if(T.grid!==false) for(const lx of [-1.6,1.6]){
       const a=project(lx,0),b=project(lx,FAR);
       ctx.strokeStyle=T.rail;ctx.lineWidth=Math.max(2,10*a.s);
       ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
