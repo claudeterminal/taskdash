@@ -20,14 +20,14 @@
     position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(circle at 50% 0%, #2a1a5e 0%, #150a33 60%, #0d0820 100%);
   }
-  #stage{position:relative;height:100%;aspect-ratio:9/16;max-width:100%;box-shadow:0 0 80px rgba(0,0,0,.6);}
+  #stage{position:relative;height:100%;aspect-ratio:9/16;max-width:100%;box-shadow:0 0 80px rgba(0,0,0,.6);background:#0b0718;overflow:hidden;}
   canvas{display:block;width:100%;height:100%;background:#1a1130;transition:filter .2s ease;}
-  #game.blurred{filter:blur(5px);}
+  #game.blurred{filter:blur(5px) brightness(0.45);}
 
   .overlay{
     position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#fff;padding:24px;gap:16px;z-index:5;
-    background:radial-gradient(circle at 50% 35%, rgba(40,20,90,.55), rgba(10,6,26,.92));
+    background:radial-gradient(circle at 50% 38%, rgba(40,20,90,.5) 0%, rgba(10,6,26,.9) 62%, rgba(8,4,20,.95) 100%);
   }
   .hidden{display:none!important;}
   /* task-entry screen: darker + blurrier backdrop so the text reads clearly over the live demo */
@@ -51,7 +51,7 @@
     transition:transform .08s ease, box-shadow .08s ease;
   }
   .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #c79a17, 0 6px 14px rgba(0,0,0,.4);}
-  .btn:disabled{filter:grayscale(.7) brightness(.7);cursor:not-allowed;box-shadow:0 6px 0 #555;transform:none;}
+  .btn:disabled{background:rgba(150,155,170,.25);color:rgba(255,255,255,.5);box-shadow:none;filter:none;cursor:not-allowed;transform:none;backdrop-filter:none;}
   .tasks{display:flex;flex-direction:column;gap:8px;width:100%;max-width:300px;}
   .task-input{font-family:'Fredoka',sans-serif;font-size:16px;font-weight:600;color:#fff;
     background:rgba(12,6,28,.6);border:2px solid rgba(255,255,255,.18);border-radius:12px;
@@ -131,7 +131,7 @@
     <div id="overScreen" class="overlay hidden">
       <div class="label">Crashed Into</div>
       <div class="hit-task" id="hitTask">—</div>
-      <div class="lock-note">Go get it done. You can run again in</div>
+      <div class="lock-note" id="lockNote">Go get it done. You can run again in</div>
       <div class="countdown" id="countdown">3:00</div>
       <button class="btn ghost voice-toggle" id="voiceBtn">🔊 Voice on</button>
       <div class="stat-row">
@@ -499,6 +499,7 @@
     reset();
     stopSpeech();
     state=STATE.PLAY;
+    setBgBlur(false);
     document.getElementById('startScreen').classList.add('hidden');
     document.getElementById('overScreen').classList.add('hidden');
     document.getElementById('pauseScreen').classList.add('hidden');
@@ -520,11 +521,11 @@
 
   function togglePause(){
     if(state===STATE.PLAY){
-      state=STATE.PAUSE; SFX.stopBg();
+      state=STATE.PAUSE; SFX.stopBg(); setBgBlur(true);
       document.getElementById('pauseScreen').classList.remove('hidden');
       document.getElementById('pauseBtn').textContent='▶';
     } else if(state===STATE.PAUSE){
-      state=STATE.PLAY; SFX.resume(); SFX.startBg();
+      state=STATE.PLAY; SFX.resume(); SFX.startBg(); setBgBlur(false);
       document.getElementById('pauseScreen').classList.add('hidden');
       document.getElementById('pauseBtn').textContent='⏸';
       lastTime=performance.now();
@@ -535,7 +536,7 @@
   }
 
   function gameOver(){
-    state=STATE.OVER; worldShake=18; SFX.stopBg();
+    state=STATE.OVER; worldShake=18; SFX.stopBg(); setBgBlur(true);
     bestTime=Math.max(bestTime,runTime);
     bestCoins=Math.max(bestCoins,coinCount);
     document.getElementById('finalScore').textContent=fmtTime(Math.floor(runTime/1000));
@@ -555,6 +556,8 @@
   function startLockout(secs){
     countdownLeft=secs;
     const cd=document.getElementById('countdown');
+    const note=document.getElementById('lockNote');
+    note.style.display='';   // shown while counting down
     doneBtn.disabled=true; doneBtn.textContent='Done and Play Again';
     cd.textContent=fmtTime(countdownLeft);
     if(countdownTimer)clearInterval(countdownTimer);
@@ -567,6 +570,7 @@
       if(countdownLeft<=0){
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
+        note.style.display='none';   // remove "Go get it done. You can run again in"
         doneBtn.disabled=false; doneBtn.textContent='Done and Play Again';
         speak(`Time's up. You can play again.`);
       }
@@ -835,6 +839,7 @@
   function drawObstacle(o){
     if(o.type==='train'){ if(o.z+o.len < PASS_Z) return; }
     else if(offScreenBottom(o)) return;
+    const lbl = o.label || '';
     const p=project(o.lane, Math.max(o.z, CLAMP_Z)); // follow true distance, but never blow up at the camera
     const s=p.s;
     if(o.type==='train'){
@@ -852,7 +857,7 @@
       ctx.lineTo(back.x+wB,back.y-hB);ctx.lineTo(p.x+w,p.y-h);ctx.closePath();ctx.fill();
       // roof label (on the top of the structure)
       const cxRoof=(p.x+back.x)/2, cyRoof=((p.y-h)+(back.y-hB))/2, roofExt=(p.y-h)-(back.y-hB);
-      drawLabel(o.label, cxRoof, cyRoof, (w+wB)*0.92, Math.max(10,roofExt*1.4), {squashY:0.6});
+      drawLabel(lbl, cxRoof, cyRoof, (w+wB)*0.92, Math.max(10,roofExt*1.4), {squashY:0.6});
       // front face
       ctx.fillStyle=hue;
       ctx.fillRect(p.x-w,p.y-h,w*2,h);
@@ -860,12 +865,12 @@
       ctx.fillStyle='rgba(225,250,255,.9)';
       ctx.fillRect(p.x-w*0.62,p.y-h*0.82,w*1.24,h*0.22);
       // front-face label
-      drawLabel(o.label, p.x, p.y-h*0.32, w*1.7, h*0.4);
+      drawLabel(lbl, p.x, p.y-h*0.32, w*1.7, h*0.4);
     } else if(o.type==='low'){
       const w=o.w*s,h=o.h*s;
       ctx.fillStyle='#ff3b6b';ctx.fillRect(p.x-w,p.y-h,w*2,h);
       ctx.fillStyle='rgba(255,255,255,.16)';ctx.fillRect(p.x-w,p.y-h,w*2,h*0.22); // soft top highlight
-      drawLabel(o.label, p.x, p.y-h*0.5, w*1.95, h*0.92);
+      drawLabel(lbl, p.x, p.y-h*0.5, w*1.95, h*0.92);
     } else if(o.type==='high'){
       const w=o.w*s, topH=o.h*s, gap=o.gap*s;
       // an overhead beam you roll under (gap at bottom)
@@ -877,12 +882,12 @@
       ctx.fillRect(p.x-w,p.y-gap,w*0.18,gap);
       ctx.fillRect(p.x+w-w*0.18,p.y-gap,w*0.18,gap);
       // label near the top of the beam
-      drawLabel(o.label, p.x, p.y-topH+(topH-gap)*0.42, w*1.85, (topH-gap)*0.7);
+      drawLabel(lbl, p.x, p.y-topH+(topH-gap)*0.42, w*1.85, (topH-gap)*0.7);
     } else { // block
       const w=o.w*s,h=o.h*s;
       ctx.fillStyle='#16e0bd';ctx.fillRect(p.x-w,p.y-h,w*2,h);
       ctx.fillStyle='rgba(255,255,255,.14)';ctx.fillRect(p.x-w,p.y-h,w*2,h*0.2); // soft top highlight
-      drawLabel(o.label, p.x, p.y-h*0.48, w*1.85, h*0.72);
+      drawLabel(lbl, p.x, p.y-h*0.48, w*1.85, h*0.72);
     }
   }
 
@@ -965,8 +970,9 @@
   // ---- Main loop ----
   function loop(t){
     const dt=Math.min(40, t-lastTime); lastTime=t;
-    if(state===STATE.PLAY && !player.dead){ update(dt, true); }
-    else if(state===STATE.PLAY && player.dead){
+    const playing = (state===STATE.PLAY);
+    if(playing && !player.dead){ update(dt, true); }
+    else if(playing && player.dead){
       // brief crash freeze + shake before the lockout screen appears
       for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.life-=dt*0.002;}
       particles=particles.filter(p=>p.life>0);
@@ -974,6 +980,8 @@
     }
     else if(state===STATE.OVER){ update(dt, false); } // world keeps running behind the lockout overlay
     else if(state===STATE.START){ update(dt, false); } // and behind the task-entry screen (no shake here)
+    // blur is ONLY ever applied when not actively playing — the live game is always sharp
+    cvs.classList.toggle('blurred', !playing);
     draw();
     runId=requestAnimationFrame(loop);
   }
