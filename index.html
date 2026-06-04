@@ -49,6 +49,7 @@
   .title span{display:block;color:var(--cool);font-size:.5em;text-shadow:0 4px 0 #0b6b5c;letter-spacing:6px;}
   .c-yellow{background:var(--neon);color:#191033;padding:0 .22em;border-radius:5px;font-weight:700;box-decoration-break:clone;-webkit-box-decoration-break:clone;}
   .c-aqua{color:var(--cool);}
+  .c-yeltext{color:var(--neon);font-weight:700;}
   .sub{font-size:clamp(14px,3.5vw,18px);opacity:.85;max-width:30ch;font-weight:500;}
   .btn{
     font-family:'Bungee',cursive;font-size:clamp(18px,5vw,26px);
@@ -59,7 +60,7 @@
   }
   .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #c79a17, 0 6px 14px rgba(0,0,0,.4);}
   .btn:disabled{background:rgba(150,155,170,.25);color:rgba(255,255,255,.5);box-shadow:none;filter:none;cursor:not-allowed;transform:none;backdrop-filter:none;}
-  #doneBtn{font-size:clamp(22px,7vw,36px);padding:18px 30px;border-radius:18px;line-height:1.15;text-align:center;}
+  #doneBtn{font-size:clamp(16px,4.4vw,22px);padding:13px 26px;border-radius:14px;line-height:1.25;text-align:center;max-width:300px;}
   .tasks{display:flex;flex-direction:column;gap:8px;width:100%;max-width:300px;}
   .task-input{font-family:'Fredoka',sans-serif;font-size:16px;font-weight:600;color:#fff;
     background:rgba(12,6,28,.6);border:2px solid rgba(255,255,255,.18);border-radius:12px;
@@ -168,7 +169,7 @@
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
-      <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real</span> life. Crash into a <span class="c-yellow">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
+      <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real</span> life. Crash into a <span class="c-yeltext">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
       <div class="sub hidden" id="scheduleSub">Enter up to 50 <span class="c-yellow">tasks</span> for the entire day and do them in <span class="c-aqua">order</span>. Separate with new lines or commas.</div>
       <div class="tasks" id="taskWrap">
         <input class="task-input" type="text" maxlength="25" placeholder="type task 1">
@@ -277,21 +278,27 @@
     let t = m>0 ? `${m} minute${m!==1?'s':''}` : '';
     if(s>0) t += (t?' and ':'') + `${s} second${s!==1?'s':''}`;
     if(!t) t = 'almost no time';
-    const lines = [
+    const questions = [
+      `What are you doing right now? You should be on ${task}.`,
+      `Are you really working on ${task}? Be honest.`,
+      `Have you actually started ${task} yet?`,
+      `Is ${task} getting done, or are you stalling?`,
+      `How much of ${task} have you finished so far?`,
+      `Why isn't ${task} done yet? What's stopping you?`,
+      `Are you focused, or are you scrolling? ${task}, now.`,
+    ];
+    const statements = [
       `Get up and finish ${task}. You've got this.`,
-      `Stop stalling. ${task} is waiting. ${t} left.`,
-      `Future you will thank you. Go do ${task} now.`,
-      `${task} won't take as long as you think. Start it.`,
-      `You're stronger than the excuse. Go finish ${task}.`,
+      `Future you will thank you. Go do ${task}.`,
+      `You're stronger than the excuse. Finish ${task}.`,
       `Small steps count. Knock out ${task}.`,
-      `Don't let ${task} sit. ${t} on the clock.`,
       `One task, full focus. ${task}. Let's go.`,
       `Discipline now, freedom later. Finish ${task}.`,
-      `Make it happen. ${task}. You can run again in ${t}.`,
-      `Move. ${task} is calling. You can do hard things.`,
       `Progress beats perfect. Just begin ${task}.`,
     ];
-    speak(lines[Math.floor(Math.random()*lines.length)]);
+    const pool = Math.random()<0.5 ? questions : statements;   // ask questions half the time
+    const line = pool[Math.floor(Math.random()*pool.length)];
+    speak(`${line} ${t} left.`);                               // always say how long is left
   }
 
   let player, obstacles, coins, particles;
@@ -428,50 +435,67 @@
   // ---- Sound (Web Audio, fully synthesized) ----
   const SFX = (()=>{
     let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0;
-    // four original progressions (chord-tone frequencies), each its own key + tempo
-    // bright, major-key progressions with a plucky melodic motif (mel = indices into the chord-tone pool, -1 = rest)
+    // Original cinematic-orchestra style: lush string pads, brass, bubbly harp arpeggios,
+    // glockenspiel sparkles, timpani hits and crescendo swells. A different song opens each visit.
+    const STEPS=8;
     const SONGS=[
-      { ms:262, prog:[ // C G Am F  (I V vi IV) — sunny
+      // "Heroic Sunrise" — C major (I V vi IV)
+      { ms:150, prog:[
         {bass:130.81, ch:[261.63,329.63,392.00]},
-        {bass:98.00,  ch:[196.00,246.94,293.66]},
-        {bass:110.00, ch:[220.00,261.63,329.63]},
-        {bass:87.31,  ch:[174.61,220.00,261.63]} ],
-        mel:[0,-1,3,-1,2,4,-1,3] },
-      { ms:250, prog:[ // D A Bm G — bright, whimsical
+        {bass:98.00,  ch:[392.00,493.88,587.33]},
+        {bass:110.00, ch:[440.00,523.25,659.25]},
+        {bass:87.31,  ch:[349.23,440.00,523.25]} ],
+        mel:[523.25,587.33,659.25,783.99,659.25,587.33,523.25,0] },
+      // "Sparkle Waltz" — G major
+      { ms:156, prog:[
+        {bass:98.00,  ch:[392.00,493.88,587.33]},
+        {bass:146.83, ch:[293.66,369.99,440.00]},
+        {bass:82.41,  ch:[329.63,392.00,493.88]},
+        {bass:130.81, ch:[261.63,329.63,392.00]} ],
+        mel:[587.33,659.25,783.99,659.25,587.33,493.88,440.00,0] },
+      // "Grand Adventure" — F major, dramatic
+      { ms:162, prog:[
+        {bass:87.31,  ch:[349.23,440.00,523.25]},
+        {bass:130.81, ch:[261.63,329.63,392.00]},
+        {bass:146.83, ch:[293.66,349.23,440.00]},
+        {bass:116.54, ch:[233.08,293.66,349.23]} ],
+        mel:[523.25,587.33,698.46,587.33,523.25,440.00,392.00,0] },
+      // "Soaring Magic" — D major
+      { ms:150, prog:[
         {bass:146.83, ch:[293.66,369.99,440.00]},
         {bass:110.00, ch:[220.00,277.18,329.63]},
         {bass:123.47, ch:[246.94,293.66,369.99]},
         {bass:98.00,  ch:[196.00,246.94,293.66]} ],
-        mel:[0,2,4,3,-1,2,4,2] },
-      { ms:278, prog:[ // F Dm Bb C — mellow tropical
-        {bass:87.31,  ch:[174.61,220.00,261.63]},
-        {bass:146.83, ch:[146.83,174.61,220.00]},
-        {bass:116.54, ch:[233.08,293.66,349.23]},
-        {bass:130.81, ch:[261.63,329.63,392.00]} ],
-        mel:[0,-1,2,-1,4,-1,3,1] },
-      { ms:256, prog:[ // G D Em C — uplifting cinematic
-        {bass:98.00,  ch:[196.00,246.94,293.66]},
-        {bass:146.83, ch:[293.66,369.99,440.00]},
-        {bass:82.41,  ch:[164.81,196.00,246.94]},
-        {bass:130.81, ch:[261.63,329.63,392.00]} ],
-        mel:[0,2,1,4,2,3,4,2] },
+        mel:[587.33,659.25,739.99,880.00,739.99,659.25,587.33,0] },
+      // "Festival Triumph" — A major
+      { ms:152, prog:[
+        {bass:110.00, ch:[220.00,277.18,329.63]},
+        {bass:164.81, ch:[329.63,415.30,493.88]},
+        {bass:184.99, ch:[369.99,440.00,554.37]},
+        {bass:146.83, ch:[293.66,369.99,440.00]} ],
+        mel:[659.25,739.99,659.25,554.37,493.88,440.00,329.63,0] },
     ];
     function playStep(){
       const song=SONGS[songIdx];
       const local=step-songStartStep;
-      const prog=song.prog, bar=Math.floor(local/8)%prog.length, beat=local%8, c=prog[bar];
+      const bars=song.prog.length;
+      const bar=Math.floor(local/STEPS)%bars;
+      const s=local%STEPS;
+      const c=song.prog[bar];
       if(!muted && actx){
-        const pool=[c.ch[0], c.ch[1], c.ch[2], c.ch[0]*2, c.ch[2]*2];
-        if(beat%2===0) tone(120,0.13,{type:'sine',vol:0.20,slideTo:46});           // four-on-the-floor kick
-        if(beat%2===1){ tone(c.bass,0.18,{type:'triangle',vol:0.13});               // offbeat plucky bass
-          noise(0.022,{vol:0.045,filterFreq:9000,type:'highpass'}); }               // soft shaker
-        if(beat===0){ tone(c.ch[0],0.7,{type:'sine',vol:0.05}); tone(c.ch[2],0.7,{type:'sine',vol:0.04}); } // warm pad
-        if(beat===2||beat===6) tone(c.ch[1],0.16,{type:'triangle',vol:0.07});       // marimba stab
-        const mi=song.mel[beat];
-        if(mi>=0) tone(pool[mi],0.22,{type:'sine',vol:0.085});                      // plucky melodic lead
+        const barDur=STEPS*song.ms/1000;
+        if(s===0){ padChord(c.ch, barDur*0.98); brass(c.ch[0],0.5); timp(c.bass); }   // strings + brass + drum on the downbeat
+        if(s===4){ brass(c.ch[1],0.4); timp(c.bass); }                                // mid-bar pulse for drive
+        const arp=[c.ch[0],c.ch[1],c.ch[2],c.ch[2]*2,c.ch[1]*2,c.ch[2],c.ch[1],c.ch[0]*2];
+        harp(arp[s]);                                                                 // bubbly climbing arpeggio
+        if(s%2===1) noise(0.02,{vol:0.028,filterFreq:9000,type:'highpass'});          // light shaker
+        if(s===2||s===6) bell(c.ch[2]*2);                                             // glockenspiel sparkle
+        const mf=song.mel[s];
+        if(mf>0) lead(mf,0.3);                                                        // soaring melody lead
+        if(s===STEPS-1 && bar===bars-1) swell();                                      // crescendo swell into the loop
       }
       step++;
-      if(step-songStartStep >= Math.round(180000/song.ms)){ // ~3 minutes per song
+      if(step-songStartStep >= Math.round(75000/song.ms)){ // roll to a new song every ~75s for variety
         songIdx=(songIdx+1)%SONGS.length; songStartStep=step;
       }
     }
@@ -502,6 +526,14 @@
       const g=actx.createGain();g.gain.value=vol;
       src.connect(f);f.connect(g);g.connect(master);src.start();
     }
+    // orchestral voices
+    function padChord(freqs,dur){ freqs.forEach(f=>{ tone(f,dur,{type:'triangle',vol:0.035,attack:0.10}); tone(f*1.004,dur,{type:'sawtooth',vol:0.018,attack:0.16}); }); }
+    function harp(f){ tone(f,0.5,{type:'triangle',vol:0.075,attack:0.004}); }
+    function bell(f){ tone(f,0.5,{type:'sine',vol:0.05,attack:0.002}); tone(f*2,0.35,{type:'sine',vol:0.018,attack:0.002}); }
+    function brass(f,dur){ tone(f,dur,{type:'sawtooth',vol:0.05,attack:0.02}); tone(f,dur,{type:'triangle',vol:0.03,attack:0.02}); }
+    function lead(f,dur){ tone(f,dur,{type:'triangle',vol:0.09,attack:0.012}); tone(f*2,dur,{type:'sine',vol:0.028,attack:0.012}); }
+    function timp(f){ tone(f,0.34,{type:'sine',vol:0.16,slideTo:f*0.5}); noise(0.05,{vol:0.06,filterFreq:240}); }
+    function swell(){ noise(0.5,{vol:0.09,filterFreq:6500,type:'highpass'}); }
     return {
       resume(){ensure();if(actx&&actx.state==='suspended')actx.resume();},
       setMuted(m){muted=m;if(master)master.gain.value=m?0:0.5;},
