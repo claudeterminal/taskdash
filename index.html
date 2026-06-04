@@ -27,7 +27,7 @@
   /* ---- Two-player split screen ---- */
   #stage.twop{aspect-ratio:1080/960;height:auto;width:100%;max-height:100%;}
   .toptab{
-    position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;
+    position:absolute;top:32px;left:50%;transform:translateX(-50%);z-index:6;
     font-family:'Bungee',cursive;font-size:clamp(13px,3.4vw,17px);letter-spacing:.5px;
     color:#fff;background:rgba(22,224,189,.18);border:2px solid var(--cool);
     border-radius:999px;padding:8px 18px;cursor:pointer;backdrop-filter:blur(3px);
@@ -141,6 +141,7 @@
   .hud-box.score{color:var(--cool);}
   .hud-box.level{color:var(--neon);font-size:clamp(13px,3.4vw,17px);}
   .hud-left{display:flex;gap:8px;pointer-events:none;}
+  .hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none;}
   #levelToast{position:absolute;top:4%;left:0;right:0;text-align:center;z-index:6;pointer-events:none;
     font-family:'Bungee',cursive;font-size:clamp(24px,7vw,42px);color:var(--neon);
     text-shadow:0 5px 0 var(--hot);opacity:0;transform:scale(.7);}
@@ -173,10 +174,12 @@
     <div id="hud" class="hidden">
       <div class="hud-left">
         <div class="hud-box score"><span id="scoreVal">0</span></div>
-        <div class="hud-box level"><span id="levelVal">Lv 1</span></div>
         <div class="hud-box"><div class="coin-dot"></div><span id="coinVal">0</span></div>
       </div>
-      <button class="hud-box mute" id="pauseBtn" aria-label="Pause">⏸</button>
+      <div class="hud-right">
+        <button class="hud-box mute" id="pauseBtn" aria-label="Pause">⏸</button>
+        <div class="hud-box level"><span id="levelVal">Lv 1</span></div>
+      </div>
     </div>
     <div id="levelToast"></div>
 
@@ -189,7 +192,7 @@
 
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
-      <button id="twoPlayerBtn" class="toptab" type="button">👥 2 Players</button>
+      <button id="twoPlayerBtn" class="toptab" type="button">👥 Two Player Mode</button>
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
       <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real</span> life. Crash into a <span class="c-yeltext">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
       <div class="sub hidden" id="scheduleSub">Enter up to 50 <span class="c-yellow">tasks</span> for the entire day and do them in <span class="c-aqua">order</span>. Separate with new lines or commas.</div>
@@ -1504,17 +1507,42 @@
       restoreFrom(W1);
       if(!W1.done){ update2p(dt); if(player.dead){ W1.done=true; W1.crashTime=runTime; W1.crashCoins=coinCount; } }
       drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
-      restoreFrom(W2);
-      if(!W2.done){ update2p(dt); if(player.dead){ W2.done=true; W2.crashTime=runTime; W2.crashCoins=coinCount; } }
-      drawWorldInto(W,'P2',W2.done); snapshotInto(W2);
+      if(W2.joined){
+        restoreFrom(W2);
+        if(!W2.done){ update2p(dt); if(player.dead){ W2.done=true; W2.crashTime=runTime; W2.crashCoins=coinCount; } }
+        drawWorldInto(W,'P2',W2.done); snapshotInto(W2);
+      } else {
+        drawWaitingPanel(W);
+      }
       drawDivider();
-      if(W1.done&&W2.done) endTwoPlayer();
+      // round ends when every player who's in is done (P2 may never have joined)
+      if(W1.done && (W2.joined ? W2.done : true)) endTwoPlayer();
     } else {
       restoreFrom(W1); drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
-      restoreFrom(W2); drawWorldInto(W,'P2',W2.done); snapshotInto(W2);
+      if(W2.joined){ restoreFrom(W2); drawWorldInto(W,'P2',W2.done); snapshotInto(W2); }
+      else drawWaitingPanel(W);
       drawDivider();
     }
   }
+  function drawWaitingPanel(offsetX){
+    ctx.save();
+    ctx.beginPath(); ctx.rect(offsetX,0,W,H); ctx.clip();
+    ctx.translate(offsetX,0);
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#181138'); g.addColorStop(1,'#0c0820');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(22,224,189,.92)'; ctx.font='700 34px Bungee, cursive';
+    ctx.fillText('PLAYER 2', W/2, H*0.40);
+    const pulse=0.55+0.35*Math.sin(performance.now()*0.004);
+    ctx.fillStyle='rgba(255,255,255,'+pulse+')'; ctx.font='600 23px Fredoka, sans-serif';
+    ctx.fillText('waiting to join…', W/2, H*0.40+46);
+    ctx.fillStyle='rgba(255,255,255,.45)'; ctx.font='600 17px Fredoka, sans-serif';
+    ctx.fillText('press  ↑ ← → ↓', W/2, H*0.40+96);
+    ctx.fillText('or tap this side', W/2, H*0.40+122);
+    ctx.restore();
+  }
+  function joinTwoP2(){ if(W2.joined)return; makeFreshWorld(W2); W2.joined=true; SFX.start(); }
   function startTwoPlayer(){
     twoP=true; twoState='play'; stopSpeech();
     cvs.width=1080; cvs.height=H;
@@ -1526,20 +1554,29 @@
     document.getElementById('twoOverScreen').classList.add('hidden');
     document.getElementById('twoExit').classList.remove('hidden');
     cvs.classList.remove('blurred');
-    makeFreshWorld(W1); makeFreshWorld(W2);
+    makeFreshWorld(W1); makeFreshWorld(W2); W2.joined=false;
     SFX.resume(); SFX.start(); SFX.startBg();
   }
   function endTwoPlayer(){
     twoState='results';
     const t1=W1.crashTime,c1=W1.crashCoins,t2=W2.crashTime,c2=W2.crashCoins;
-    let win=0; if(t1>t2)win=1; else if(t2>t1)win=2; else if(c1>c2)win=1; else if(c2>c1)win=2;
     document.getElementById('p1Time').textContent=fmtTime(Math.floor(t1/1000));
     document.getElementById('p1Coins').textContent=c1;
-    document.getElementById('p2Time').textContent=fmtTime(Math.floor(t2/1000));
-    document.getElementById('p2Coins').textContent=c2;
-    document.getElementById('twoWinner').textContent = win===0 ? "It's a tie!" : 'Player '+win+' wins!';
-    document.getElementById('p1Card').classList.toggle('win',win===1);
-    document.getElementById('p2Card').classList.toggle('win',win===2);
+    if(!W2.joined){
+      // nobody joined the second side — just show Player 1's run
+      document.getElementById('p2Time').textContent='—';
+      document.getElementById('p2Coins').textContent='—';
+      document.getElementById('twoWinner').textContent='Run over';
+      document.getElementById('p1Card').classList.remove('win');
+      document.getElementById('p2Card').classList.remove('win');
+    } else {
+      let win=0; if(t1>t2)win=1; else if(t2>t1)win=2; else if(c1>c2)win=1; else if(c2>c1)win=2;
+      document.getElementById('p2Time').textContent=fmtTime(Math.floor(t2/1000));
+      document.getElementById('p2Coins').textContent=c2;
+      document.getElementById('twoWinner').textContent = win===0 ? "It's a tie!" : 'Player '+win+' wins!';
+      document.getElementById('p1Card').classList.toggle('win',win===1);
+      document.getElementById('p2Card').classList.toggle('win',win===2);
+    }
     document.getElementById('twoOverScreen').classList.remove('hidden');
     SFX.start();
   }
@@ -1571,16 +1608,18 @@
     else if(k==='d'||k==='D')pmove(W1,1);
     else if(k==='w'||k==='W')pjump(W1);
     else if(k==='s'||k==='S')pduck(W1);
-    else if(k==='ArrowLeft')pmove(W2,-1);
-    else if(k==='ArrowRight')pmove(W2,1);
-    else if(k==='ArrowUp')pjump(W2);
-    else if(k==='ArrowDown')pduck(W2);
+    else if(k==='ArrowLeft'){ if(!W2.joined){joinTwoP2();return;} pmove(W2,-1); }
+    else if(k==='ArrowRight'){ if(!W2.joined){joinTwoP2();return;} pmove(W2,1); }
+    else if(k==='ArrowUp'){ if(!W2.joined){joinTwoP2();return;} pjump(W2); }
+    else if(k==='ArrowDown'){ if(!W2.joined){joinTwoP2();return;} pduck(W2); }
     else if(k==='Escape')quitTwoPlayer();
   }
   // touch: left half drives P1, right half drives P2 (multi-touch, per finger)
   const tp={};
   cvs.addEventListener('touchstart',e=>{ if(!twoP)return; const r=cvs.getBoundingClientRect();
-    for(const t of e.changedTouches){ tp[t.identifier]={x:t.clientX,y:t.clientY,half:(t.clientX<r.left+r.width/2?1:2),used:false}; } },{passive:true});
+    for(const t of e.changedTouches){ const half=(t.clientX<r.left+r.width/2?1:2);
+      if(half===2 && !W2.joined){ joinTwoP2(); continue; }
+      tp[t.identifier]={x:t.clientX,y:t.clientY,half,used:false}; } },{passive:true});
   cvs.addEventListener('touchmove',e=>{ if(!twoP)return;
     for(const t of e.changedTouches){ const s=tp[t.identifier]; if(!s||s.used)continue;
       const dx=t.clientX-s.x, dy=t.clientY-s.y, adx=Math.abs(dx), ady=Math.abs(dy);
