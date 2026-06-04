@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Metro Dash</title>
+<title>Task Dash</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Bungee&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
@@ -109,7 +109,7 @@
 
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
-      <div class="title" style="font-size:clamp(30px,9vw,56px)">Metro<span>Dash</span></div>
+      <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
       <div class="sub" id="setupSub">Name up to 5 things you need to get done. Crash into one and you owe it 5 minutes before you can run again.</div>
       <div class="tasks">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 1">
@@ -119,6 +119,7 @@
         <input class="task-input" type="text" maxlength="38" placeholder="Task 5">
       </div>
       <button class="btn" id="startBtn" disabled>Play</button>
+      <button class="btn ghost voice-toggle" id="setupMuteBtn">🔊 Music on</button>
       <div class="controls">
         <b>← →</b> lanes &nbsp;·&nbsp; <b>↑ / Space</b> jump &nbsp;·&nbsp; <b>↓</b> roll &nbsp;·&nbsp; <b>P</b> pause
       </div>
@@ -180,13 +181,26 @@
   let voiceMuted = false;
 
   // spoken reminders during the lockout (Web Speech API)
+  const ttsOK = ('speechSynthesis' in window) && ('SpeechSynthesisUtterance' in window);
+  let ttsVoice = null;
+  function loadVoices(){
+    if(!ttsOK) return;
+    const vs = window.speechSynthesis.getVoices() || [];
+    ttsVoice = vs.find(v=>/en[-_]US/i.test(v.lang)) || vs.find(v=>/^en/i.test(v.lang)) || vs[0] || null;
+  }
+  if(ttsOK){ loadVoices(); try{ window.speechSynthesis.onvoiceschanged = loadVoices; }catch(e){} }
+
   function speak(text){
-    if(voiceMuted || !('speechSynthesis' in window)) return;
+    if(voiceMuted || !ttsOK) return;
     try{
-      window.speechSynthesis.cancel();
+      const synth = window.speechSynthesis;
+      synth.resume();           // Chrome parks the engine when idle — wake it
+      synth.cancel();           // clear any stuck/queued utterance
       const u = new SpeechSynthesisUtterance(text);
+      if(ttsVoice) u.voice = ttsVoice;
       u.rate = 1; u.pitch = 1; u.volume = 1;
-      window.speechSynthesis.speak(u);
+      synth.speak(u);
+      setTimeout(()=>{ try{ synth.resume(); }catch(e){} }, 90); // nudge in case it was asleep
     }catch(e){}
   }
   function stopSpeech(){ try{ window.speechSynthesis.cancel(); }catch(e){} }
@@ -231,10 +245,11 @@
   }
   // We spawn relative to distance traveled. Use a "next spawn distance".
   let nextSpawnAt = 0;
+  let nextCoinAt = 0;
   function planSpawns(){
     if(dist < nextSpawnAt) return;
-    const gap = Math.max(360, 760 - dist*0.02); // tighter over time
-    nextSpawnAt = dist + gap*(0.7+Math.random()*0.6);
+    const gap = Math.max(280, 560 - dist*0.018); // closer together over time, less variance
+    nextSpawnAt = dist + gap*(0.7+Math.random()*0.4);
 
     const z = FAR;
     const r = Math.random();
@@ -264,6 +279,14 @@
       coinLine(LANES[li], z+260, 5);
     }
   }
+  // steady coin stream so there's always something to grab between obstacles
+  function planCoins(){
+    if(dist < nextCoinAt) return;
+    nextCoinAt = dist + 220 + Math.random()*120;
+    const li = rand3();
+    if(Math.random()<0.4) coinArc(LANES[li], FAR);
+    else coinLine(LANES[li], FAR, 4+Math.floor(Math.random()*3));
+  }
   function rand3(){return Math.floor(Math.random()*3);}
   function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
@@ -281,7 +304,46 @@
 
   // ---- Sound (Web Audio, fully synthesized) ----
   const SFX = (()=>{
-    let actx=null, master=null, muted=false, bgTimer=null, step=0;
+    let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0;
+    // four original progressions (chord-tone frequencies), each its own key + tempo
+    const SONGS=[
+      { ms:165, lead:0.22, prog:[ // Am F C G (vi IV I V)
+        {bass:110.00, ch:[220.00,261.63,329.63]},
+        {bass:87.31,  ch:[174.61,220.00,261.63]},
+        {bass:130.81, ch:[261.63,329.63,392.00]},
+        {bass:98.00,  ch:[196.00,246.94,293.66]} ]},
+      { ms:150, lead:0.30, prog:[ // Em C G D (brighter, faster)
+        {bass:82.41,  ch:[164.81,196.00,246.94]},
+        {bass:130.81, ch:[261.63,329.63,392.00]},
+        {bass:98.00,  ch:[196.00,246.94,293.66]},
+        {bass:146.83, ch:[146.83,185.00,220.00]} ]},
+      { ms:186, lead:0.18, prog:[ // Dm Bb F C (slower, mellow)
+        {bass:146.83, ch:[146.83,174.61,220.00]},
+        {bass:116.54, ch:[233.08,293.66,349.23]},
+        {bass:87.31,  ch:[174.61,220.00,261.63]},
+        {bass:130.81, ch:[261.63,329.63,392.00]} ]},
+      { ms:144, lead:0.28, prog:[ // Am G F E (driving, andalusian)
+        {bass:110.00, ch:[220.00,261.63,329.63]},
+        {bass:98.00,  ch:[196.00,246.94,293.66]},
+        {bass:87.31,  ch:[174.61,220.00,261.63]},
+        {bass:82.41,  ch:[164.81,207.65,246.94]} ]},
+    ];
+    function playStep(){
+      const song=SONGS[songIdx];
+      if(!muted && actx){
+        const prog=song.prog, local=step-songStartStep;
+        const bar=Math.floor(local/8)%prog.length, beat=local%8, c=prog[bar];
+        if(beat===0) tone(c.bass,0.55,{type:'triangle',vol:0.11});
+        if(beat===4) tone(c.bass*1.5,0.4,{type:'triangle',vol:0.07});
+        if(beat%2===0) noise(0.03,{vol:0.05,filterFreq:7500,type:'highpass'});
+        if(beat%2===1) tone(c.ch[(beat>>1)%c.ch.length],0.22,{type:'sine',vol:0.07});
+        if(Math.random()<song.lead) tone(c.ch[(Math.random()*c.ch.length)|0]*2,0.26,{type:'triangle',vol:0.055});
+      }
+      step++;
+      if(step-songStartStep >= Math.round(180000/song.ms)){ // ~3 minutes per song
+        songIdx=(songIdx+1)%SONGS.length; songStartStep=step;
+      }
+    }
     function ensure(){
       if(actx)return;
       try{
@@ -320,26 +382,13 @@
       crash(){noise(0.5,{vol:0.6,filterFreq:1700});tone(180,0.5,{type:'sawtooth',vol:0.32,slideTo:48});},
       start(){[523,659,784,1047].forEach((f,i)=>setTimeout(()=>tone(f,0.14,{vol:0.22}),i*90));},
       startBg(){
-        if(bgTimer)return; step=0;
-        // gentle vi–IV–I–V progression (Am F C G), arpeggiated, 8 steps per bar
-        const prog=[
-          {bass:110.00, ch:[220.00,261.63,329.63]}, // Am
-          {bass:87.31,  ch:[174.61,220.00,261.63]}, // F
-          {bass:130.81, ch:[261.63,329.63,392.00]}, // C
-          {bass:98.00,  ch:[196.00,246.94,293.66]}, // G
-        ];
-        bgTimer=setInterval(()=>{
-          if(muted||!actx)return;
-          const bar=Math.floor(step/8)%prog.length, beat=step%8, c=prog[bar];
-          if(beat===0) tone(c.bass,0.55,{type:'triangle',vol:0.11});      // root
-          if(beat===4) tone(c.bass*1.5,0.4,{type:'triangle',vol:0.07});   // fifth swell
-          if(beat%2===0) noise(0.03,{vol:0.05,filterFreq:7500,type:'highpass'}); // soft hat
-          if(beat%2===1) tone(c.ch[(beat>>1)%c.ch.length],0.22,{type:'sine',vol:0.07}); // arp
-          if(Math.random()<0.22) tone(c.ch[Math.floor(Math.random()*c.ch.length)]*2,0.26,{type:'triangle',vol:0.055}); // melody
-          step++;
-        },165);
+        if(bgTimer)return;
+        step=0; songStartStep=0;
+        songIdx=Math.floor(Math.random()*SONGS.length); // vary which song opens each run
+        const tick=()=>{ playStep(); bgTimer=setTimeout(tick, SONGS[songIdx].ms); };
+        tick();
       },
-      stopBg(){if(bgTimer){clearInterval(bgTimer);bgTimer=null;}}
+      stopBg(){if(bgTimer){clearTimeout(bgTimer);bgTimer=null;}}
     };
   })();
 
@@ -404,14 +453,10 @@
   doneBtn.onclick=()=>{
     if(doneBtn.disabled) return;
     stopSpeech();
-    // mark the crashed task complete and remove it from the pool
-    const i = tasks.indexOf(hitTask);
-    if(i>=0) tasks.splice(i,1);
-    if(tasks.length===0){
-      backToSetup("Nice — all tasks cleared! Add a fresh set.");
-    } else {
-      startGame();
-    }
+    // clear only the slot of the task they hit; keep the other four as-is
+    const slot = taskInputs.find(i => i.value.trim() === hitTask);
+    if(slot) slot.value='';
+    showSetup("One down! Fill the empty slot and run again.", slot);
   };
 
   const voiceBtn=document.getElementById('voiceBtn');
@@ -424,25 +469,32 @@
   });
 
   const muteBtn=document.getElementById('muteBtn');
-  muteBtn.addEventListener('click',e=>{
-    e.stopPropagation();
+  const setupMuteBtn=document.getElementById('setupMuteBtn');
+  function refreshMuteLabels(){
+    const m=SFX.isMuted();
+    muteBtn.textContent = m?'🔇':'🔊';
+    setupMuteBtn.textContent = m?'🔇 Music off':'🔊 Music on';
+  }
+  function toggleMute(){
     SFX.resume();
-    const m=!SFX.isMuted();
-    SFX.setMuted(m);
-    muteBtn.textContent=m?'🔇':'🔊';
-  });
+    SFX.setMuted(!SFX.isMuted());
+    refreshMuteLabels();
+  }
+  muteBtn.addEventListener('click',e=>{e.stopPropagation();toggleMute();});
+  setupMuteBtn.addEventListener('click',e=>{e.stopPropagation();SFX.startBg();toggleMute();});
 
-  function backToSetup(message){
+  function showSetup(message, focusEl){
     if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}
     stopSpeech();
-    state=STATE.START; SFX.stopBg();
+    state=STATE.START;
+    SFX.startBg();   // keep the soundtrack going on the task list
     if(message) document.getElementById('setupSub').textContent=message;
-    if(tasks.length===0) taskInputs.forEach(i=>i.value='');
     refreshStartBtn();
     document.getElementById('overScreen').classList.add('hidden');
     document.getElementById('pauseScreen').classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('startScreen').classList.remove('hidden');
+    if(focusEl) setTimeout(()=>{ try{focusEl.focus();}catch(e){} }, 60);
   }
 
   function startGame(){
@@ -461,6 +513,7 @@
     obstacles.push(makeLow(LANES[2], 980));     // easy jump, side lane (center stays clear)
     obstacles.push(makeHigh(LANES[0], 1500));   // easy roll
     nextSpawnAt = 1700;
+    nextCoinAt = 260;
     SFX.resume(); SFX.start(); SFX.startBg();
     cancelAnimationFrame(runId);
     lastTime=performance.now();
@@ -480,10 +533,7 @@
     }
   }
   function quitToMenu(){
-    state=STATE.START; SFX.stopBg();
-    document.getElementById('pauseScreen').classList.add('hidden');
-    document.getElementById('hud').classList.add('hidden');
-    document.getElementById('startScreen').classList.remove('hidden');
+    showSetup();
   }
 
   function gameOver(){
@@ -510,13 +560,14 @@
     speakUpdate();   // announce immediately
     countdownTimer=setInterval(()=>{
       countdownLeft--;
+      if(ttsOK && !voiceMuted){ try{ window.speechSynthesis.resume(); }catch(e){} } // keep engine awake
       cd.textContent=fmtTime(Math.max(0,countdownLeft));
       if(countdownLeft>0 && countdownLeft%15===0) speakUpdate();  // every 15s
       if(countdownLeft<=0){
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
         doneBtn.disabled=false; doneBtn.textContent='Done — Run Again';
-        speak(`Time's up. If ${hitTask || 'your task'} is done, tap done to run again.`);
+        speak(`Time's up. You can play again.`);
       }
     },1000);
   }
@@ -532,6 +583,7 @@
     stripeOffset = (stripeOffset + dz) % 240;
 
     planSpawns();
+    planCoins();
 
     // player lane lerp
     player.x += (player.targetX - player.x)*Math.min(1, dt*0.018);
@@ -903,6 +955,25 @@
   reset();
   draw();
   runId=requestAnimationFrame(loop);
+
+  // music is scheduled immediately; browsers only let it sound after a first interaction,
+  // so unlock the audio on the very first tap/click/keypress anywhere on the page
+  SFX.startBg();
+  refreshMuteLabels();
+  const unlockAudio=()=>{
+    SFX.resume();
+    if(state===STATE.START || state===STATE.PLAY) SFX.startBg();
+    // prime speech so it's ready by the time a lockout starts
+    if(ttsOK){ try{ window.speechSynthesis.resume(); loadVoices();
+      const warm=new SpeechSynthesisUtterance(' '); warm.volume=0; window.speechSynthesis.speak(warm);
+    }catch(e){} }
+    window.removeEventListener('pointerdown',unlockAudio);
+    window.removeEventListener('keydown',unlockAudio);
+    window.removeEventListener('touchstart',unlockAudio);
+  };
+  window.addEventListener('pointerdown',unlockAudio,{once:false});
+  window.addEventListener('keydown',unlockAudio,{once:false});
+  window.addEventListener('touchstart',unlockAudio,{once:false});
 })();
 </script>
 </body>
