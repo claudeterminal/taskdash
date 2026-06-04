@@ -97,8 +97,8 @@
   .hud-box.score{color:var(--cool);}
   .hud-box.level{color:var(--neon);font-size:clamp(13px,3.4vw,17px);}
   .hud-left{display:flex;gap:8px;pointer-events:none;}
-  #levelToast{position:absolute;top:34%;left:0;right:0;text-align:center;z-index:6;pointer-events:none;
-    font-family:'Bungee',cursive;font-size:clamp(30px,9vw,54px);color:var(--neon);
+  #levelToast{position:absolute;top:11%;left:0;right:0;text-align:center;z-index:6;pointer-events:none;
+    font-family:'Bungee',cursive;font-size:clamp(24px,7vw,42px);color:var(--neon);
     text-shadow:0 5px 0 var(--hot);opacity:0;transform:scale(.7);}
   #levelToast.show{animation:levelPop 1.7s ease-out;}
   #levelToast .sub2{display:block;font-family:'Fredoka',sans-serif;font-size:.34em;color:#fff;text-shadow:none;letter-spacing:2px;opacity:.9;}
@@ -297,30 +297,31 @@
   let nextCoinAt = 0;
   function planSpawns(){
     if(dist < nextSpawnAt) return;
-    const prog = Math.min(1, dist/26000); // 0 -> 1 difficulty over roughly the first minute
-    const gap = 820 - 520*prog;           // sparse (~820) early -> dense (~300) later
+    const prog = Math.min(1, (currentLevel()-1)/5); // steps up each level (L1=easy -> L6=full)
+    const gap = 800 - 500*prog;            // sparser early, tighter each level (trickier, same speed)
     nextSpawnAt = dist + gap*(0.8+Math.random()*0.4);
 
     const z = FAR, r = Math.random();
-    // easy stuff first; trains and multi-lane blocks only fade in as prog climbs
-    if(prog < 0.22){
-      // gentle opening: single jump/roll barriers, the occasional single block — always two lanes open
+    // easy stuff first; trains and multi-lane blocks only fade in as the level climbs
+    if(prog < 0.2){
+      // level 1: single jump/roll barriers, the occasional single block — always two lanes open
       if(r < 0.50) obstacles.push(makeLow(LANES[rand3()], z));
       else if(r < 0.85) obstacles.push(makeHigh(LANES[rand3()], z));
       else obstacles.push(makeObstacle(LANES[rand3()], z));
-    } else if(prog < 0.5){
-      // introduce single trains and blocks
+    } else if(prog < 0.55){
+      // levels 2-3: introduce single trains and blocks
       if(r < 0.30) obstacles.push(makeLow(LANES[rand3()], z));
       else if(r < 0.55) obstacles.push(makeHigh(LANES[rand3()], z));
       else if(r < 0.80) obstacles.push(makeObstacle(LANES[rand3()], z));
       else obstacles.push(makeTrain(LANES[rand3()], z));
     } else {
-      // full difficulty: occasional two-lane blocks
-      if(r < 0.22) obstacles.push(makeLow(LANES[rand3()], z));
-      else if(r < 0.42) obstacles.push(makeHigh(LANES[rand3()], z));
-      else if(r < 0.68) obstacles.push(makeTrain(LANES[rand3()], z));
+      // levels 4+: two-lane blocks get more common the higher the level
+      const twoLaneChance = 0.35 + 0.35*prog; // up to ~70% at max level
+      if(r < 0.20) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.40) obstacles.push(makeHigh(LANES[rand3()], z));
+      else if(r < 0.66) obstacles.push(makeTrain(LANES[rand3()], z));
       else {
-        const blocked = shuffle([0,1,2]).slice(0, Math.random()<0.45?2:1);
+        const blocked = shuffle([0,1,2]).slice(0, Math.random()<twoLaneChance?2:1);
         blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
       }
     }
@@ -353,10 +354,10 @@
       ob:['#16e0bd','#ff3b6b','#7b5cff','#ff924d','#ffd23f'], round:4 },
     { name:'Jungle River', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17',
       road:'#1f6e57', side:'#1f4a22', water:true, laneLine:'rgba(220,255,200,.22)', dash:'rgba(180,140,80,.45)', rail:'#2c5a36',
-      ob:['#7a4a22','#9c6b2e','#3f8a2f','#5fae3a','#c9a35a'], round:11 },
+      ob:['#8a5a2a','#a9763a','#c9a35a','#6b3f1c','#b5853f'], round:11 },
     { name:'Desert', sky:['#c9743c','#e3a857','#ffe3a8'], sun:'255,235,180', sun2:'#ffe08a', horizon:'cactus', building:'120,72,32',
       road:'#caa46a', side:'#9c7b46', water:false, laneLine:'rgba(255,240,200,.22)', dash:'rgba(150,100,50,.45)', rail:'#8a6a3a',
-      ob:['#c0653a','#d98a4a','#e0b06a','#6e9a4a','#a85a3a'], round:5 },
+      ob:['#b5472a','#d4622a','#4f7a33','#7a4220','#a8503f'], round:5 },
     { name:'Glacier', sky:['#3f6ea8','#7fb0e0','#dff2ff'], sun:'230,245,255', sun2:null, horizon:'mountains', building:'86,116,156',
       road:'#5f93c4', side:'#cfe6f5', water:true, laneLine:'rgba(255,255,255,.5)', dash:'rgba(120,170,210,.55)', rail:'#7fa6c8',
       ob:['#4dd0ff','#9fe8ff','#6ea8ff','#e6f7ff','#7fd0c8'], round:9 },
@@ -717,8 +718,8 @@
   }
 
   function update(dt, live=true){
-    // speed ramp (trimmed ~5%)
-    speed = (baseSpeed + Math.min(9, dist*0.0006)) * 0.95;
+    // speed: a brief warmup then holds steady — levels add trickier obstacles, NOT more speed
+    speed = (baseSpeed + Math.min(1.3, dist*0.0009)) * 0.95;
     if(!live) speed = Math.min(speed, 11); // background demo stays calm
     const dz = speed*(dt/16.67); // world units to advance this frame
     const f = dt/16.67;          // frame-time factor so physics match real time at any refresh rate
