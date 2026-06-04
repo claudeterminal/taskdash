@@ -442,7 +442,7 @@
     obstacles = [];
     coins = [];
     particles = [];
-    baseSpeed = 8;           // a touch calmer so obstacles are easy to read and react to
+    baseSpeed = 9;           // brisk pace; difficulty comes from dense, varied obstacles
     speed = baseSpeed;
     dist = 0; score = 0; coinCount = 0; runTime = 0; lastLevel = 1; labelIdx = 0;
     spawnZ = 1600;
@@ -462,32 +462,30 @@
   let nextCoinAt = 0;
   function planSpawns(){
     if(dist < nextSpawnAt) return;
-    const prog = Math.min(1, (currentLevel()-1)/16); // very slow ramp: full difficulty only ~level 17
-    const gap = 1250 - 250*prog;           // big, forgiving spacing between obstacles
-    nextSpawnAt = dist + gap*(0.9+Math.random()*0.4);
+    const prog = Math.min(1, (currentLevel()-1)/8);   // ramps to full difficulty by ~level 9
+    const gap = 880 - 340*prog;                        // starts brisk, tightens — always something to react to
+    nextSpawnAt = dist + gap*(0.82+Math.random()*0.4);
 
     const z = FAR, r = Math.random();
-    // mostly single, easily-avoidable barriers; trains and two-lane blocks stay rare
-    if(prog < 0.4){
-      // early on: just single jump/duck barriers and the rare single block — two lanes always open
-      if(r < 0.55) obstacles.push(makeLow(LANES[rand3()], z));
-      else if(r < 0.92) obstacles.push(makeHigh(LANES[rand3()], z));
-      else obstacles.push(makeObstacle(LANES[rand3()], z));
-    } else if(prog < 0.8){
-      // mid game: introduce the occasional single train/block, still all single-lane
-      if(r < 0.38) obstacles.push(makeLow(LANES[rand3()], z));
-      else if(r < 0.72) obstacles.push(makeHigh(LANES[rand3()], z));
-      else if(r < 0.88) obstacles.push(makeObstacle(LANES[rand3()], z));
-      else obstacles.push(makeTrain(LANES[rand3()], z));
+    // every kind is in play from the start (jump / duck / big blocks / trains); two-lane walls ramp in
+    if(prog < 0.45){
+      if(r < 0.28) obstacles.push(makeLow(LANES[rand3()], z));       // jump
+      else if(r < 0.54) obstacles.push(makeHigh(LANES[rand3()], z)); // duck
+      else if(r < 0.82) obstacles.push(makeObstacle(LANES[rand3()], z)); // big block — move out of the lane
+      else obstacles.push(makeTrain(LANES[rand3()], z));             // train — long, move early
     } else {
-      // late game: two-lane blocks appear but stay uncommon (~25% at the very top)
-      const twoLaneChance = 0.10 + 0.15*prog;
-      if(r < 0.30) obstacles.push(makeLow(LANES[rand3()], z));
-      else if(r < 0.55) obstacles.push(makeHigh(LANES[rand3()], z));
-      else if(r < 0.75) obstacles.push(makeTrain(LANES[rand3()], z));
+      const twoLaneChance = 0.25 + 0.35*prog;          // two open-lane → forced move, up to ~60%
+      if(r < 0.20) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.42) obstacles.push(makeHigh(LANES[rand3()], z));
+      else if(r < 0.60) obstacles.push(makeTrain(LANES[rand3()], z));
       else {
         const blocked = shuffle([0,1,2]).slice(0, Math.random()<twoLaneChance?2:1);
         blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
+      }
+      // higher up, sometimes chain a jump/duck right behind a block so you must move AND time it
+      if(prog > 0.55 && Math.random() < 0.28*prog){
+        const open = shuffle([0,1,2])[0];
+        obstacles.push(Math.random()<0.5 ? makeLow(LANES[open], z+360) : makeHigh(LANES[open], z+360));
       }
     }
   }
@@ -1366,7 +1364,8 @@
 
     // body
     const bodyTop = rolling? feetY-bodyH : feetY-bodyH;
-    ctx.fillStyle='#ff3b6b';
+    const skin = player.skin || '#ff3b6b';
+    ctx.fillStyle=skin;
     roundRect(cx-bodyW/2, bodyTop, bodyW, bodyH, 16*s); ctx.fill();
     // jacket stripe
     ctx.fillStyle='#ffd23f';
@@ -1375,7 +1374,7 @@
     // arms
     if(!rolling){
       const swing=player.grounded?Math.sin(player.legPhase+Math.PI)*14*s:-10*s;
-      ctx.lineWidth=11*s;ctx.strokeStyle='#ff3b6b';
+      ctx.lineWidth=11*s;ctx.strokeStyle=skin;
       ctx.beginPath();ctx.moveTo(cx-bodyW/2+4*s,bodyTop+10*s);ctx.lineTo(cx-bodyW/2-6*s+swing,bodyTop+34*s);ctx.stroke();
       ctx.beginPath();ctx.moveTo(cx+bodyW/2-4*s,bodyTop+10*s);ctx.lineTo(cx+bodyW/2+6*s-swing,bodyTop+34*s);ctx.stroke();
     }
@@ -1385,7 +1384,7 @@
     ctx.fillStyle='#ffcf9e';
     ctx.beginPath();ctx.arc(cx,headY,headR,0,Math.PI*2);ctx.fill();
     // cap
-    ctx.fillStyle='#16e0bd';
+    ctx.fillStyle=player.cap || '#16e0bd';
     ctx.beginPath();ctx.arc(cx,headY,headR,Math.PI*1.05,Math.PI*2.0,false);ctx.fill();
     ctx.fillRect(cx-headR*0.2,headY-headR*0.95,headR*1.4,headR*0.5);
     // face
@@ -1523,15 +1522,16 @@
     ctx.save();
     ctx.translate(offsetX,0);
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    // who-am-I tag (YOU is highlighted)
-    ctx.font='700 17px Bungee, cursive';
-    const tw=ctx.measureText(label).width;
-    ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(HALF/2-tw/2-13, 9, tw+26, 27);
-    ctx.fillStyle=(label==='YOU')?'#16e0bd':'#ffd23f';
-    ctx.fillText(label, HALF/2, 23);
+    // who-am-I tag — bordered pill, YOU highlighted in aqua to match the runner
+    const col=(label==='YOU')?'#16e0bd':'#ffd23f';
+    ctx.font='700 20px Bungee, cursive';
+    const tw=ctx.measureText(label).width, pw=tw+30, ph=32, px=HALF/2-pw/2, py=8;
+    ctx.fillStyle='rgba(8,4,20,.66)'; roundRect(px,py,pw,ph,13); ctx.fill();
+    ctx.lineWidth=2.5; ctx.strokeStyle=col; roundRect(px,py,pw,ph,13); ctx.stroke();
+    ctx.fillStyle=col; ctx.fillText(label, HALF/2, py+ph/2+1);
     // time + coins
     ctx.font='700 14px Fredoka, sans-serif';
-    ctx.fillStyle='#fff'; ctx.fillText(fmtTime(Math.floor(runTime/1000))+'    ⛁ '+coinCount, HALF/2, 49);
+    ctx.fillStyle='#fff'; ctx.fillText(fmtTime(Math.floor(runTime/1000))+'    ⛁ '+coinCount, HALF/2, py+ph+15);
     if(done){
       ctx.fillStyle='rgba(8,4,20,.45)'; ctx.fillRect(0,0,HALF,H);
       ctx.fillStyle='#ff3b6b'; ctx.font='700 32px Bungee, cursive';
@@ -1599,6 +1599,7 @@
     document.getElementById('twoExit').classList.remove('hidden');
     cvs.classList.remove('blurred');
     makeFreshWorld(W1); makeFreshWorld(W2); W2.joined=false;
+    W1.player.skin='#16e0bd'; W1.player.cap='#0b9e88';   // YOU = aqua outfit to match the tag
     SFX.resume(); SFX.start(); SFX.startBg();
   }
   function endTwoPlayer(){
@@ -1629,6 +1630,7 @@
     document.getElementById('p1Card').classList.remove('win');
     document.getElementById('p2Card').classList.remove('win');
     makeFreshWorld(W1); makeFreshWorld(W2);
+    W1.player.skin='#16e0bd'; W1.player.cap='#0b9e88';
     twoState='play'; SFX.start();
   }
   function quitTwoPlayer(){
