@@ -110,13 +110,11 @@
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
-      <div class="sub" id="setupSub">Name up to 5 things you need to get done. Crash into one and you owe it 5 minutes before you can run again.</div>
+      <div class="sub" id="setupSub">Name up to 3 tasks you want to do. Crash into a random one, and you'll be stuck working on it for a few minutes before you can replay.</div>
       <div class="tasks">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 1">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 2">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 3">
-        <input class="task-input" type="text" maxlength="38" placeholder="Task 4">
-        <input class="task-input" type="text" maxlength="38" placeholder="Task 5">
       </div>
       <button class="btn" id="startBtn" disabled>Play</button>
       <button class="btn ghost voice-toggle" id="setupMuteBtn">🔊 Music on</button>
@@ -130,7 +128,7 @@
       <div class="label">Crashed Into</div>
       <div class="hit-task" id="hitTask">—</div>
       <div class="lock-note">Go get it done. You can run again in</div>
-      <div class="countdown" id="countdown">5:00</div>
+      <div class="countdown" id="countdown">3:00</div>
       <button class="btn ghost voice-toggle" id="voiceBtn">🔊 Voice on</button>
       <div class="stat-row">
         <div class="stat"><span class="label">Score</span><span class="v" id="finalScore">0</span></div>
@@ -253,39 +251,32 @@
 
     const z = FAR;
     const r = Math.random();
-    // choose a pattern
-    if(r < 0.40){
+    // choose an obstacle pattern (coins are handled separately so they never overlap)
+    if(r < 0.45){
       // single obstacle in 1 or 2 lanes, leave at least one open
       const blocked = shuffle([0,1,2]).slice(0, Math.random()<0.35?2:1);
-      blocked.forEach(li=>{
-        obstacles.push(makeObstacle(LANES[li], z));
-      });
-      sprinkleCoins(z, blocked);
-    } else if(r < 0.65){
-      // a train (tall block you must dodge) in one lane, coins funnel beside
-      const li = rand3();
-      obstacles.push(makeTrain(LANES[li], z));
-      const open = [0,1,2].filter(i=>i!==li);
-      coinLine(LANES[open[Math.floor(Math.random()*open.length)]], z, 6);
+      blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
+    } else if(r < 0.68){
+      obstacles.push(makeTrain(LANES[rand3()], z));
     } else if(r < 0.85){
-      // low barrier across lanes -> jump; with a coin arc
-      const li = rand3();
-      obstacles.push(makeLow(LANES[li], z));
-      coinArc(LANES[li], z);
+      obstacles.push(makeLow(LANES[rand3()], z));
     } else {
-      // high barrier -> roll under; coins after
-      const li = rand3();
-      obstacles.push(makeHigh(LANES[li], z));
-      coinLine(LANES[li], z+260, 5);
+      obstacles.push(makeHigh(LANES[rand3()], z));
     }
   }
-  // steady coin stream so there's always something to grab between obstacles
+  // single coin source: lays down ONE formation at a time (an arc OR a ground line),
+  // spaced so formations never overlap — so you never see an arc and ground coins together
   function planCoins(){
     if(dist < nextCoinAt) return;
-    nextCoinAt = dist + 220 + Math.random()*120;
-    const li = rand3();
-    if(Math.random()<0.4) coinArc(LANES[li], FAR);
-    else coinLine(LANES[li], FAR, 4+Math.floor(Math.random()*3));
+    const busy=new Set();
+    for(const o of obstacles){ if(o.z>FAR-400 && o.z<FAR+900) busy.add(o.lane); }
+    let idxs=[0,1,2].filter(i=>!busy.has(LANES[i]));
+    if(!idxs.length) idxs=[0,1,2];
+    const li=idxs[Math.floor(Math.random()*idxs.length)];
+    let len;
+    if(Math.random()<0.4){ coinArc(LANES[li], FAR); len=420; }
+    else { const n=5+Math.floor(Math.random()*3); coinLine(LANES[li], FAR, n); len=n*120; }
+    nextCoinAt = dist + len + 140 + Math.random()*140; // sequential, slight gap, no overlap
   }
   function rand3(){return Math.floor(Math.random()*3);}
   function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -547,7 +538,7 @@
     document.getElementById('hitTask').textContent = hitTask || 'a task';
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('overScreen').classList.remove('hidden');
-    startLockout(5*60);   // 5:00 minutes
+    startLockout(3*60);   // 3:00 minutes
   }
 
   function fmtTime(s){ const m=Math.floor(s/60); const ss=String(s%60).padStart(2,'0'); return m+':'+ss; }
