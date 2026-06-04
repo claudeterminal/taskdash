@@ -32,7 +32,7 @@
   .hidden{display:none!important;}
   /* task-entry screen: darker + blurrier backdrop so the text reads clearly over the live demo */
   #startScreen{
-    background:radial-gradient(circle at 50% 35%, rgba(35,17,82,.60), rgba(9,5,23,.95));
+    background:radial-gradient(circle at 50% 40%, rgba(35,17,82,.55) 0%, rgba(9,5,22,.9) 60%, rgba(8,4,18,.95) 100%);
   }
   .title{
     font-family:'Bungee',cursive;line-height:.95;letter-spacing:1px;
@@ -52,6 +52,7 @@
   }
   .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #c79a17, 0 6px 14px rgba(0,0,0,.4);}
   .btn:disabled{background:rgba(150,155,170,.25);color:rgba(255,255,255,.5);box-shadow:none;filter:none;cursor:not-allowed;transform:none;backdrop-filter:none;}
+  #doneBtn{font-size:clamp(14px,3.6vw,18px);padding:10px 22px;border-radius:13px;}
   .tasks{display:flex;flex-direction:column;gap:8px;width:100%;max-width:300px;}
   .task-input{font-family:'Fredoka',sans-serif;font-size:16px;font-weight:600;color:#fff;
     background:rgba(12,6,28,.6);border:2px solid rgba(255,255,255,.18);border-radius:12px;
@@ -140,7 +141,7 @@
         <div class="stat"><span class="label">Distance</span><span class="v" id="finalDist">0m</span></div>
       </div>
       <div class="best" id="bestLine"></div>
-      <button class="btn" id="doneBtn" disabled>Done and Play Again</button>
+      <button class="btn" id="doneBtn" disabled>Done. Play again.</button>
     </div>
   </div>
 </div>
@@ -231,7 +232,7 @@
     obstacles = [];
     coins = [];
     particles = [];
-    baseSpeed = 7;            // world units advanced per ~16ms frame
+    baseSpeed = 9;           // brisk from the start; difficulty comes from obstacle density
     speed = baseSpeed;
     dist = 0; score = 0; coinCount = 0; runTime = 0;
     spawnZ = 1600;
@@ -251,22 +252,32 @@
   let nextCoinAt = 0;
   function planSpawns(){
     if(dist < nextSpawnAt) return;
-    const gap = Math.max(280, 560 - dist*0.018); // closer together over time, less variance
-    nextSpawnAt = dist + gap*(0.7+Math.random()*0.4);
+    const prog = Math.min(1, dist/26000); // 0 -> 1 difficulty over roughly the first minute
+    const gap = 820 - 520*prog;           // sparse (~820) early -> dense (~300) later
+    nextSpawnAt = dist + gap*(0.8+Math.random()*0.4);
 
-    const z = FAR;
-    const r = Math.random();
-    // choose an obstacle pattern (coins are handled separately so they never overlap)
-    if(r < 0.45){
-      // single obstacle in 1 or 2 lanes, leave at least one open
-      const blocked = shuffle([0,1,2]).slice(0, Math.random()<0.35?2:1);
-      blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
-    } else if(r < 0.68){
-      obstacles.push(makeTrain(LANES[rand3()], z));
-    } else if(r < 0.85){
-      obstacles.push(makeLow(LANES[rand3()], z));
+    const z = FAR, r = Math.random();
+    // easy stuff first; trains and multi-lane blocks only fade in as prog climbs
+    if(prog < 0.22){
+      // gentle opening: single jump/roll barriers, the occasional single block — always two lanes open
+      if(r < 0.50) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.85) obstacles.push(makeHigh(LANES[rand3()], z));
+      else obstacles.push(makeObstacle(LANES[rand3()], z));
+    } else if(prog < 0.5){
+      // introduce single trains and blocks
+      if(r < 0.30) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.55) obstacles.push(makeHigh(LANES[rand3()], z));
+      else if(r < 0.80) obstacles.push(makeObstacle(LANES[rand3()], z));
+      else obstacles.push(makeTrain(LANES[rand3()], z));
     } else {
-      obstacles.push(makeHigh(LANES[rand3()], z));
+      // full difficulty: occasional two-lane blocks
+      if(r < 0.22) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.42) obstacles.push(makeHigh(LANES[rand3()], z));
+      else if(r < 0.68) obstacles.push(makeTrain(LANES[rand3()], z));
+      else {
+        const blocked = shuffle([0,1,2]).slice(0, Math.random()<0.45?2:1);
+        blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
+      }
     }
   }
   // single coin source: lays down ONE formation at a time (an arc OR a ground line),
@@ -302,38 +313,46 @@
   const SFX = (()=>{
     let actx=null, master=null, muted=false, bgTimer=null, step=0, songIdx=0, songStartStep=0;
     // four original progressions (chord-tone frequencies), each its own key + tempo
+    // bright, major-key progressions with a plucky melodic motif (mel = indices into the chord-tone pool, -1 = rest)
     const SONGS=[
-      { ms:165, lead:0.22, prog:[ // Am F C G (vi IV I V)
-        {bass:110.00, ch:[220.00,261.63,329.63]},
-        {bass:87.31,  ch:[174.61,220.00,261.63]},
-        {bass:130.81, ch:[261.63,329.63,392.00]},
-        {bass:98.00,  ch:[196.00,246.94,293.66]} ]},
-      { ms:150, lead:0.30, prog:[ // Em C G D (brighter, faster)
-        {bass:82.41,  ch:[164.81,196.00,246.94]},
+      { ms:262, prog:[ // C G Am F  (I V vi IV) — sunny
         {bass:130.81, ch:[261.63,329.63,392.00]},
         {bass:98.00,  ch:[196.00,246.94,293.66]},
-        {bass:146.83, ch:[146.83,185.00,220.00]} ]},
-      { ms:186, lead:0.18, prog:[ // Dm Bb F C (slower, mellow)
+        {bass:110.00, ch:[220.00,261.63,329.63]},
+        {bass:87.31,  ch:[174.61,220.00,261.63]} ],
+        mel:[0,-1,3,-1,2,4,-1,3] },
+      { ms:250, prog:[ // D A Bm G — bright, whimsical
+        {bass:146.83, ch:[293.66,369.99,440.00]},
+        {bass:110.00, ch:[220.00,277.18,329.63]},
+        {bass:123.47, ch:[246.94,293.66,369.99]},
+        {bass:98.00,  ch:[196.00,246.94,293.66]} ],
+        mel:[0,2,4,3,-1,2,4,2] },
+      { ms:278, prog:[ // F Dm Bb C — mellow tropical
+        {bass:87.31,  ch:[174.61,220.00,261.63]},
         {bass:146.83, ch:[146.83,174.61,220.00]},
         {bass:116.54, ch:[233.08,293.66,349.23]},
-        {bass:87.31,  ch:[174.61,220.00,261.63]},
-        {bass:130.81, ch:[261.63,329.63,392.00]} ]},
-      { ms:144, lead:0.28, prog:[ // Am G F E (driving, andalusian)
-        {bass:110.00, ch:[220.00,261.63,329.63]},
+        {bass:130.81, ch:[261.63,329.63,392.00]} ],
+        mel:[0,-1,2,-1,4,-1,3,1] },
+      { ms:256, prog:[ // G D Em C — uplifting cinematic
         {bass:98.00,  ch:[196.00,246.94,293.66]},
-        {bass:87.31,  ch:[174.61,220.00,261.63]},
-        {bass:82.41,  ch:[164.81,207.65,246.94]} ]},
+        {bass:146.83, ch:[293.66,369.99,440.00]},
+        {bass:82.41,  ch:[164.81,196.00,246.94]},
+        {bass:130.81, ch:[261.63,329.63,392.00]} ],
+        mel:[0,2,1,4,2,3,4,2] },
     ];
     function playStep(){
       const song=SONGS[songIdx];
+      const local=step-songStartStep;
+      const prog=song.prog, bar=Math.floor(local/8)%prog.length, beat=local%8, c=prog[bar];
       if(!muted && actx){
-        const prog=song.prog, local=step-songStartStep;
-        const bar=Math.floor(local/8)%prog.length, beat=local%8, c=prog[bar];
-        if(beat===0) tone(c.bass,0.55,{type:'triangle',vol:0.11});
-        if(beat===4) tone(c.bass*1.5,0.4,{type:'triangle',vol:0.07});
-        if(beat%2===0) noise(0.03,{vol:0.05,filterFreq:7500,type:'highpass'});
-        if(beat%2===1) tone(c.ch[(beat>>1)%c.ch.length],0.22,{type:'sine',vol:0.07});
-        if(Math.random()<song.lead) tone(c.ch[(Math.random()*c.ch.length)|0]*2,0.26,{type:'triangle',vol:0.055});
+        const pool=[c.ch[0], c.ch[1], c.ch[2], c.ch[0]*2, c.ch[2]*2];
+        if(beat%2===0) tone(120,0.13,{type:'sine',vol:0.20,slideTo:46});           // four-on-the-floor kick
+        if(beat%2===1){ tone(c.bass,0.18,{type:'triangle',vol:0.13});               // offbeat plucky bass
+          noise(0.022,{vol:0.045,filterFreq:9000,type:'highpass'}); }               // soft shaker
+        if(beat===0){ tone(c.ch[0],0.7,{type:'sine',vol:0.05}); tone(c.ch[2],0.7,{type:'sine',vol:0.04}); } // warm pad
+        if(beat===2||beat===6) tone(c.ch[1],0.16,{type:'triangle',vol:0.07});       // marimba stab
+        const mi=song.mel[beat];
+        if(mi>=0) tone(pool[mi],0.22,{type:'sine',vol:0.085});                      // plucky melodic lead
       }
       step++;
       if(step-songStartStep >= Math.round(180000/song.ms)){ // ~3 minutes per song
@@ -410,16 +429,24 @@
     else if(e.key==='ArrowDown'||e.key==='s')roll();
   },{passive:false});
 
-  // touch / swipe
-  let tStartX=0,tStartY=0,tStartT=0;
-  cvs.addEventListener('touchstart',e=>{const t=e.changedTouches[0];tStartX=t.clientX;tStartY=t.clientY;tStartT=Date.now();},{passive:true});
-  cvs.addEventListener('touchend',e=>{
+  // touch / swipe — acts as soon as the swipe passes a small threshold (fast response)
+  let tStartX=0,tStartY=0,tConsumed=false;
+  cvs.addEventListener('touchstart',e=>{const t=e.changedTouches[0];tStartX=t.clientX;tStartY=t.clientY;tConsumed=false;},{passive:true});
+  cvs.addEventListener('touchmove',e=>{
+    if(tConsumed)return;
     const t=e.changedTouches[0];
-    const dx=t.clientX-tStartX, dy=t.clientY-tStartY;
-    const adx=Math.abs(dx), ady=Math.abs(dy);
-    if(adx<24&&ady<24){ jump(); return; } // tap = jump
+    const dx=t.clientX-tStartX, dy=t.clientY-tStartY, adx=Math.abs(dx), ady=Math.abs(dy);
+    const TH=22;
+    if(adx<TH && ady<TH) return;
+    tConsumed=true;
     if(adx>ady){ dx>0?moveRight():moveLeft(); }
     else { dy>0?roll():jump(); }
+  },{passive:true});
+  cvs.addEventListener('touchend',e=>{
+    if(tConsumed)return;
+    const t=e.changedTouches[0];
+    const adx=Math.abs(t.clientX-tStartX), ady=Math.abs(t.clientY-tStartY);
+    if(adx<22&&ady<22) jump(); // tap = jump
   },{passive:true});
 
   // ---- Task setup wiring ----
@@ -558,7 +585,7 @@
     const cd=document.getElementById('countdown');
     const note=document.getElementById('lockNote');
     note.style.display='';   // shown while counting down
-    doneBtn.disabled=true; doneBtn.textContent='Done and Play Again';
+    doneBtn.disabled=true; doneBtn.textContent='Done. Play again.';
     cd.textContent=fmtTime(countdownLeft);
     if(countdownTimer)clearInterval(countdownTimer);
     speakUpdate();   // announce immediately
@@ -571,7 +598,7 @@
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
         note.style.display='none';   // remove "Go get it done. You can run again in"
-        doneBtn.disabled=false; doneBtn.textContent='Done and Play Again';
+        doneBtn.disabled=false; doneBtn.textContent='Done. Play again.';
         speak(`Time's up. You can play again.`);
       }
     },1000);
@@ -602,7 +629,7 @@
 
   function update(dt, live=true){
     // speed ramp
-    speed = baseSpeed + Math.min(14, dist*0.0008);
+    speed = baseSpeed + Math.min(9, dist*0.0006);
     if(!live) speed = Math.min(speed, 11); // background demo stays calm
     const dz = speed*(dt/16.67); // world units to advance this frame
     const f = dt/16.67;          // frame-time factor so physics match real time at any refresh rate
@@ -614,8 +641,8 @@
     planSpawns();
     planCoins();
 
-    // player lane lerp
-    player.x += (player.targetX - player.x)*Math.min(1, dt*0.018);
+    // player lane lerp (snappy)
+    player.x += (player.targetX - player.x)*Math.min(1, dt*0.035);
     // jump physics
     if(!player.grounded){
       player.y += player.vy * f;
