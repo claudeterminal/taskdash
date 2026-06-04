@@ -145,11 +145,11 @@
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
-      <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real life</span>. Crash into a <span class="c-yellow">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
+      <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real</span> life. Crash into a <span class="c-yellow">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
       <div class="tasks">
-        <input class="task-input" type="text" maxlength="38" placeholder="type task 1">
-        <input class="task-input" type="text" maxlength="38" placeholder="type task 2">
-        <input class="task-input" type="text" maxlength="38" placeholder="type task 3">
+        <input class="task-input" type="text" maxlength="25" placeholder="type task 1">
+        <input class="task-input" type="text" maxlength="25" placeholder="type task 2">
+        <input class="task-input" type="text" maxlength="25" placeholder="type task 3">
       </div>
       <button class="btn" id="startBtn" disabled>Play</button>
       <button class="btn ghost voice-toggle" id="setupMuteBtn">🔊 Music on</button>
@@ -346,7 +346,7 @@
   // Level goes up every 10s of running; each level reskins the world (sky, road, obstacle materials)
   // without changing the gameplay structure.
   function lum(hex){ const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255; return (0.299*r+0.587*g+0.114*b)/255; }
-  function fgFor(hex){ return lum(hex)>0.6 ? '#191033' : '#fff'; } // dark text on light/yellow faces
+  function fgFor(hex){ return lum(hex)>0.52 ? '#191033' : '#fff'; } // dark text on light/aqua/yellow faces
   const THEMES=[
     { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', building:'30,15,60',
       road:'#241a3d', side:'#15243a', laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
