@@ -493,15 +493,22 @@
   // spaced so formations never overlap — so you never see an arc and ground coins together
   function planCoins(){
     if(dist < nextCoinAt) return;
-    const busy=new Set();
-    for(const o of obstacles){ if(o.z>FAR-400 && o.z<FAR+900) busy.add(o.lane); }
-    let idxs=[0,1,2].filter(i=>!busy.has(LANES[i]));
-    if(!idxs.length) idxs=[0,1,2];
-    const li=idxs[Math.floor(Math.random()*idxs.length)];
+    const near=[], busy=new Set();
+    for(const o of obstacles){ if(o.z>FAR-300 && o.z<FAR+700){ near.push(o); busy.add(o.lane); } }
+    let li, bait=null;
+    if(near.length && Math.random()<0.65){           // mostly dangle coins right where an obstacle is
+      bait = near[Math.floor(Math.random()*near.length)];
+      li = LANES.indexOf(bait.lane);
+    } else {
+      let idxs=[0,1,2].filter(i=>!busy.has(LANES[i])); if(!idxs.length) idxs=[0,1,2];
+      li = idxs[Math.floor(Math.random()*idxs.length)];
+    }
     let len;
-    if(Math.random()<0.4){ coinArc(LANES[li], FAR); len=420; }
+    if(bait && (bait.type==='low'||bait.type==='high')){ coinArc(LANES[li], bait.z); len=440; }   // arc over a jump/duck barrier — grab it with the right move
+    else if(bait){ coinLine(LANES[li], bait.z-220, 5); len=620; }                                  // a tempting trail leading straight into a block/train
+    else if(Math.random()<0.4){ coinArc(LANES[li], FAR); len=420; }
     else { const n=5+Math.floor(Math.random()*3); coinLine(LANES[li], FAR, n); len=n*120; }
-    nextCoinAt = dist + len + 140 + Math.random()*140; // sequential, slight gap, no overlap
+    nextCoinAt = dist + len + 140 + Math.random()*140;
   }
   function rand3(){return Math.floor(Math.random()*3);}
   function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -511,6 +518,8 @@
   // without changing the gameplay structure.
   function lum(hex){ const n=parseInt(hex.slice(1),16); const r=(n>>16)&255,g=(n>>8)&255,b=n&255; return (0.299*r+0.587*g+0.114*b)/255; }
   function fgFor(hex){ return lum(hex)>0.52 ? '#191033' : '#fff'; } // dark text on light/aqua/yellow faces
+  function hexRGB(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+  function colorDist(a,b){ const x=hexRGB(a),y=hexRGB(b); return Math.abs(x[0]-y[0])+Math.abs(x[1]-y[1])+Math.abs(x[2]-y[2]); }
   const THEMES=[
     { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', sun2:'#ffcf73', horizon:'city', building:'30,15,60',
       road:'#241a3d', side:'#15243a', laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
@@ -533,10 +542,49 @@
     { name:'Candy', sky:['#ff7ab8','#ffa6d2','#ffe3f1'], sun:'255,210,235', sun2:'#fff2f8', horizon:'candy', building:'214,98,160',
       road:'#f2a6cf', side:'#e07db0', laneLine:'rgba(255,255,255,.45)', dash:'rgba(255,255,255,.7)', rail:'#bf5690',
       ob:['#ff5fa8','#6fd3ff','#b98bff','#ffd24f','#5fe0a0'], round:16 },
+    { name:'Orange Grove', sky:['#ff7a18','#ff9f44','#ffd9a0'], sun:'255,200,120', sun2:'#fff0d0', horizon:'orbs', orb:'#ff8c1a', building:'150,70,10',
+      road:'#5e2f0e', side:'#7a3d12', laneLine:'rgba(255,240,210,.3)', dash:'rgba(255,230,190,.45)', rail:'#3e1f08',
+      ob:['#2ec27e','#ffffff','#ffe14d','#16a0e0','#ff4d6d'], round:14 },
+    { name:'Banana', sky:['#f5c81a','#ffe35c','#fff7c0'], sun:'255,240,150', sun2:'#fffce0', horizon:'orbs', orb:'#ffe14d', building:'120,100,20',
+      road:'#3e3410', side:'#5a4c18', laneLine:'rgba(255,250,210,.3)', dash:'rgba(255,245,190,.45)', rail:'#2a2208',
+      ob:['#7b3fb0','#16a0e0','#ff4d6d','#2ec27e','#ffffff'], round:18 },
+    { name:'Cherry', sky:['#b81030','#e0405c','#ffc0cc'], sun:'255,160,170', sun2:'#ffd0d8', horizon:'orbs', orb:'#e0203a', building:'120,20,30',
+      road:'#2e0a10', side:'#4a121c', laneLine:'rgba(255,220,225,.3)', dash:'rgba(255,200,210,.45)', rail:'#1c060a',
+      ob:['#2ec27e','#ffe14d','#ffffff','#16a0e0','#ff8a3a'], round:16 },
+    { name:'Blue Skies', sky:['#2f9bff','#6fbcff','#cfeaff'], sun:'255,250,210', sun2:'#fff7d0', horizon:'clouds', building:'120,160,200',
+      road:'#1c3f72', side:'#274f86', laneLine:'rgba(255,255,255,.35)', dash:'rgba(255,255,255,.55)', rail:'#14305a',
+      ob:['#ff4d6d','#ffd23f','#ffffff','#2ec27e','#ff8a3a'], round:10 },
+    { name:'Clouds', sky:['#bcd6ea','#dce9f4','#ffffff'], sun:'255,255,255', sun2:'#ffffff', horizon:'clouds', building:'200,215,230',
+      road:'#5d7186', side:'#7790a6', laneLine:'rgba(255,255,255,.5)', dash:'rgba(255,255,255,.7)', rail:'#42566c',
+      ob:['#ff4d6d','#7b3fb0','#16a0e0','#ff8a3a','#2ca85e'], round:12 },
+    { name:'Halloween', sky:['#0a0712','#241036','#5a2a12'], sun:'255,150,50', sun2:null, horizon:'halloween', building:'14,8,20',
+      road:'#16101a', side:'#241426', laneLine:'rgba(255,150,60,.25)', dash:'rgba(255,140,40,.45)', rail:'#3a2030',
+      ob:['#ff7a18','#8a4dff','#2ec27e','#ffffff','#ff4d6d'], round:6 },
+    { name:'Mint', sky:['#10b890','#5fd6b4','#d2f3e8'], sun:'220,255,240', sun2:null, horizon:'trees', building:'18,120,90',
+      road:'#0c3a30', side:'#114a3c', laneLine:'rgba(220,255,245,.3)', dash:'rgba(220,255,245,.45)', rail:'#062a22',
+      ob:['#ff6f91','#ffd23f','#ffffff','#7b5cff','#ff924d'], round:10 },
+    { name:'Grape', sky:['#5a1a8a','#8a3ad0','#d0a8f0'], sun:'220,180,255', sun2:'#e8d0ff', horizon:'orbs', orb:'#9b4ddb', building:'60,20,90',
+      road:'#2a1040', side:'#3a1a54', laneLine:'rgba(235,215,255,.3)', dash:'rgba(225,200,255,.45)', rail:'#180826',
+      ob:['#7fe04d','#ffd23f','#ffffff','#16d0e0','#ff5fa8'], round:14 },
+    { name:'Sunset', sky:['#ff5e62','#ff9966','#ffd194'], sun:'255,200,150', sun2:'#ffd9a0', horizon:'city', building:'40,18,46',
+      road:'#3a1d2a', side:'#4a2436', laneLine:'rgba(255,230,220,.3)', dash:'rgba(255,210,190,.45)', rail:'#26121c',
+      ob:['#16e0bd','#7b5cff','#ffd23f','#ffffff','#2ec27e'], round:6 },
+    { name:'Aurora', sky:['#08203a','#15506a','#2a8a7a'], sun:'150,255,210', sun2:null, horizon:'mountains', building:'20,42,60',
+      road:'#0c2438', side:'#103048', laneLine:'rgba(180,255,230,.3)', dash:'rgba(160,240,220,.45)', rail:'#08182a',
+      ob:['#ff6f91','#ffd23f','#ffffff','#b06bff','#ff924d'], round:9 },
+    { name:'Toxic', sky:['#0a2a0a','#2a7a1a','#a6ff5a'], sun:'200,255,140', sun2:null, horizon:'cactus', building:'24,90,20',
+      road:'#0e2a0e', side:'#163a16', laneLine:'rgba(210,255,180,.3)', dash:'rgba(200,255,160,.45)', rail:'#0a200a',
+      ob:['#ff4d6d','#16d0e0','#ffd23f','#ffffff','#b06bff'], round:8 },
+    { name:'Ocean', sky:['#06324a','#0a6a8a','#7fd0d0'], sun:'200,255,255', sun2:null, horizon:'mountains', building:'14,70,90',
+      road:'#08303e', side:'#0c4254', laneLine:'rgba(200,250,255,.32)', dash:'rgba(180,245,255,.45)', rail:'#062430',
+      ob:['#ff6f3c','#ffd23f','#ffffff','#ff4d8a','#9b6bff'], round:12 },
+    { name:'Twilight', sky:['#241a5e','#5a3aa0','#ff9ad0'], sun:'220,190,255', sun2:'#ffd0ec', horizon:'cosmic', building:'30,20,70',
+      road:'#1a1440', side:'#241a54', laneLine:'rgba(220,200,255,.3)', dash:'rgba(210,190,255,.45)', rail:'#120c2e',
+      ob:['#ffd23f','#16e0bd','#ff5fa8','#ffffff','#ff924d'], round:14 },
   ];
   function currentLevel(){ return Math.floor(runTime/10000)+1; }   // level 1 for first 10s, +1 every 10s
   function theme(){ return THEMES[(currentLevel()-1)%THEMES.length]; }
-  function obColor(){ const p=theme().ob; return p[Math.floor(Math.random()*p.length)]; }
+  function obColor(){ const t=theme(); const pal=t.ob.filter(c=>colorDist(c,t.road)>150); const use=pal.length?pal:t.ob; return use[Math.floor(Math.random()*use.length)]; }
   function obRound(){ return theme().round; }
   function recolorObstacles(){ for(const o of obstacles){ o.color=obColor(); o.round=obRound(); } } // snap on-screen obstacles to the new theme instantly
   function levelUp(lv){
@@ -678,8 +726,12 @@
     if(e.key==='ArrowLeft'||e.key==='a')moveLeft();
     else if(e.key==='ArrowRight'||e.key==='d')moveRight();
     else if(e.key==='ArrowUp'||e.key==='w'||e.key===' ')jump();
-    else if(e.key==='ArrowDown'||e.key==='s')roll();
+    else if(e.key==='ArrowDown'||e.key==='s'){ if(state===STATE.PLAY){ if(!player.rolling)roll(); player.duckHeld=true; } }
   },{passive:false});
+  window.addEventListener('keyup',e=>{
+    if(twoP){ twoPKeyUp(e); return; }
+    if(e.key==='ArrowDown'||e.key==='s'){ if(player){ player.duckHeld=false; player.rolling=false; player.rollT=0; } }
+  });
 
   // touch / swipe — acts as soon as the swipe passes a small threshold (fast response)
   let tStartX=0,tStartY=0,tConsumed=false;
@@ -885,7 +937,7 @@
     startLockout(3*60);   // 3:00 minutes
     // keep the world alive: clear the immediate crash area and set the runner back to running
     obstacles = obstacles.filter(o=> o.z > 480);
-    player.dead=false; player.y=0; player.vy=0; player.grounded=true; player.rolling=false; player.rollT=0;
+    player.dead=false; player.y=0; player.vy=0; player.grounded=true; player.rolling=false; player.rollT=0; player.duckHeld=false;
   }
 
   function fmtTime(s){ const m=Math.floor(s/60); const ss=String(s%60).padStart(2,'0'); return m+':'+ss; }
@@ -971,7 +1023,7 @@
       if(player.y<=0){player.y=0;player.vy=0;player.grounded=true;}
     }
     // roll timer
-    if(player.rolling){player.rollT-=dt*0.001;if(player.rollT<=0)player.rolling=false;}
+    if(player.rolling&&!player.duckHeld){player.rollT-=dt*0.001;if(player.rollT<=0)player.rolling=false;}
     // running leg animation
     if(player.grounded&&!player.rolling)player.legPhase+=dz*0.05;
 
@@ -1094,6 +1146,13 @@
       ctx.fillStyle=T.sun2;
       ctx.beginPath();ctx.arc(W*0.66,HORIZON-r*0.55,r,0,Math.PI*2);ctx.fill();
     }
+    // subtle drifting clouds give every scene a little motion (skip the already-busy/animated horizons)
+    if(['orbs','clouds','halloween','cosmic'].indexOf(T.horizon)<0){
+      const dt=performance.now()*0.004;
+      ctx.fillStyle='rgba(255,255,255,.06)';
+      for(let i=0;i<3;i++){ const x=((dt*(7+i*4))+i*210)%(W+170)-85, y=26+i*30;
+        ctx.beginPath(); ctx.ellipse(x,y,48,15,0,0,Math.PI*2); ctx.fill(); }
+    }
     drawHorizon(T);
   }
 
@@ -1176,6 +1235,34 @@
       lolly(W*0.16, base-120, 26, '#ff5fa8');
       lolly(W*0.50, base-168, 30, '#7ad7ff');
       lolly(W*0.85, base-128, 24, '#b98bff');
+    } else if(T.horizon==='orbs'){
+      // bobbing fruit
+      const c=T.orb||'#ff8c1a';
+      const spots=[[55,0],[150,1],[250,2],[105,3],[300,4],[200,5],[20,6]];
+      for(const [x,k] of spots){ const r=18+(k%3)*5; const y=base-46-((k*17)%56)+Math.sin(time*0.002+k)*8;
+        ctx.fillStyle='#2ca85e'; ctx.beginPath(); ctx.ellipse(x+r*0.35,y-r*0.9,7,3.4,-0.6,0,Math.PI*2); ctx.fill(); // leaf
+        ctx.fillStyle=c; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,.28)'; ctx.beginPath(); ctx.arc(x-r*0.32,y-r*0.32,r*0.3,0,Math.PI*2); ctx.fill(); }
+    } else if(T.horizon==='clouds'){
+      const dt=time*0.012;
+      ctx.fillStyle='rgba(255,255,255,.92)';
+      for(let i=0;i<4;i++){ const x=((dt*(0.6+i*0.3))+i*150)%(W+220)-110; blob(x, base-30-((i*23)%50), 42+(i%2)*16); }
+      ctx.fillStyle='rgba(255,255,255,.6)';
+      for(let i=0;i<3;i++){ const x=((dt*0.4)+i*190+70)%(W+220)-110; blob(x, base-6, 30); }
+    } else if(T.horizon==='halloween'){
+      // crescent moon
+      ctx.fillStyle='#ffd98a'; ctx.beginPath(); ctx.arc(W*0.72,base-122,36,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=T.sky[0]; ctx.beginPath(); ctx.arc(W*0.785,base-130,32,0,Math.PI*2); ctx.fill();
+      // spooky hills
+      ctx.fillStyle=B+'.96)'; ctx.beginPath(); ctx.moveTo(0,base);
+      for(let x=0;x<=W;x+=50){ ctx.lineTo(x, base-26-18*Math.sin(x*0.021)); } ctx.lineTo(W,base); ctx.closePath(); ctx.fill();
+      // flapping bats
+      ctx.fillStyle='#0a0a12';
+      for(let i=0;i<4;i++){ const bx=((time*0.05*(0.6+i*0.22))+i*120)%(W+90)-45, by=54+i*20+Math.sin(time*0.005+i)*12, s=7+(i%2)*2;
+        const f=Math.sin(time*0.02+i)*0.5;
+        ctx.beginPath(); ctx.moveTo(bx,by);
+        ctx.quadraticCurveTo(bx-s,by-s*(1+f),bx-2*s,by); ctx.quadraticCurveTo(bx-s,by+s*0.3,bx,by+s*0.35);
+        ctx.quadraticCurveTo(bx+s,by+s*0.3,bx+2*s,by); ctx.quadraticCurveTo(bx+s,by-s*(1+f),bx,by); ctx.fill(); }
     }
   }
   // helper: bumpy foliage blob made of overlapping circles
@@ -1482,7 +1569,7 @@
     planSpawns(); planCoins();
     player.x+=(player.targetX-player.x)*Math.min(1,dt*0.035);
     if(!player.grounded){ player.y+=player.vy*f; player.vy-=0.85*f; if(player.y<=0){player.y=0;player.vy=0;player.grounded=true;} }
-    if(player.rolling){ player.rollT-=dt*0.001; if(player.rollT<=0)player.rolling=false; }
+    if(player.rolling&&!player.duckHeld){ player.rollT-=dt*0.001; if(player.rollT<=0)player.rolling=false; }
     if(player.grounded&&!player.rolling)player.legPhase+=dz*0.05;
     for(const o of obstacles)o.z-=dz;
     for(const c of coins)c.z-=dz;
@@ -1645,7 +1732,9 @@
   // controls: P1 = W A S D, P2 = arrow keys
   function pmove(Wld,d){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; const nx=Math.max(-1,Math.min(1,pl.targetX+d)); if(nx!==pl.targetX){pl.targetX=nx;SFX.lane();} }
   function pjump(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(pl.grounded&&!pl.rolling){pl.vy=15.5;pl.grounded=false;SFX.jump();} }
-  function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; pl.rolling=true; pl.rollT=0.55; SFX.roll(); }
+  function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; if(!pl.rolling)SFX.roll(); pl.rolling=true; pl.rollT=0.55; pl.duckHeld=true; }
+  function pduckEnd(Wld){ const pl=Wld.player; if(pl){ pl.duckHeld=false; pl.rolling=false; pl.rollT=0; } }
+  function twoPKeyUp(e){ const k=e.key; if(k==='s'||k==='S')pduckEnd(W1); else if(k==='ArrowDown')pduckEnd(W2); }
   function twoPKey(e){
     const k=e.key;
     if(twoState!=='play'){ if(k==='Escape')quitTwoPlayer(); return; }
