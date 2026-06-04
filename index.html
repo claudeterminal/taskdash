@@ -76,6 +76,8 @@
     background:radial-gradient(circle at 50% 38%, rgba(40,20,90,.5) 0%, rgba(10,6,26,.9) 62%, rgba(8,4,20,.95) 100%);
   }
   .hidden{display:none!important;}
+  /* keep the lockout/over content lifted above the bottom-right sound buttons */
+  #overScreen{padding-bottom:86px;}
   /* task-entry screen: darker + blurrier backdrop so the text reads clearly over the live demo */
   #startScreen{
     padding-top:74px;
@@ -109,6 +111,7 @@
   .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #c79a17, 0 6px 14px rgba(0,0,0,.4);}
   .btn:disabled{background:rgba(150,155,170,.25);color:rgba(255,255,255,.5);box-shadow:none;filter:none;cursor:not-allowed;transform:none;backdrop-filter:none;}
   #doneBtn, #doneEarlyBtn{font-size:clamp(16px,4.4vw,22px);padding:13px 26px;border-radius:14px;line-height:1.25;text-align:center;max-width:300px;}
+  #doneEarlyBtn{font-size:clamp(12.5px,3.4vw,17px);padding:9px 20px;max-width:240px;}
   .tasks{display:flex;flex-direction:column;gap:8px;width:100%;max-width:300px;}
   .task-input{font-family:'Fredoka',sans-serif;font-size:18px;font-weight:600;color:#fff;
     background:rgba(12,6,28,.6);border:2px solid rgba(255,255,255,.18);border-radius:12px;
@@ -134,6 +137,7 @@
   .sched-close:hover{background:rgba(255,71,87,.85);}
   .sched-btn{font-size:13px;padding:8px 18px;}
   .go-finish{font-size:clamp(26px,7.6vw,40px);font-weight:700;line-height:1.15;max-width:22ch;opacity:.95;}
+  .go-finish.small{font-size:clamp(16px,5.5vw,28px);opacity:.9;}
   .task-name{font-family:'Bungee',cursive;color:var(--neon);font-size:clamp(28px,9vw,48px);line-height:1.05;max-width:15ch;
     text-shadow:0 5px 0 var(--hot);display:inline-block;animation:taskFlash .85s ease-in-out infinite;margin:0;}
   @keyframes taskFlash{
@@ -255,10 +259,10 @@
       <div class="lock-head">
         <div class="go-finish">Go finish</div>
         <div class="task-name" id="hitTask">—</div>
-        <div class="go-finish">that you crashed into</div>
+        <div class="go-finish small">that you crashed into</div>
       </div>
       <div class="lock-timer">
-        <div class="lock-note" id="lockNote">you can run again in:</div>
+        <div class="lock-note" id="lockNote">play again in:</div>
         <div class="countdown" id="countdown">3:00</div>
       </div>
       <div class="lock-stats">
@@ -341,10 +345,10 @@
 
   // the user's real-life tasks, painted on obstacles; crashing into one "assigns" it
   let tasks = [];
-  let scheduleMode = false, labelIdx = 0;
+  let scheduleMode = false, labelIdx = 0, autoIdx = 0;   // autoIdx = which task in the list is current (auto mode)
   const labelTask = ()=>{
     if(!tasks.length) return '';
-    if(scheduleMode){ const t = tasks[labelIdx % tasks.length]; labelIdx++; return t; } // present the day in order
+    if(scheduleMode){ return tasks[autoIdx % tasks.length]; }   // auto mode: show ONLY the current task (top of list), every obstacle
     return tasks[Math.floor(Math.random()*tasks.length)];
   };
   let hitTask = '';
@@ -503,18 +507,20 @@
       else if(r < 0.82) obstacles.push(makeObstacle(LANES[rand3()], z)); // big block — move out of the lane
       else obstacles.push(makeTrain(LANES[rand3()], z));             // train — long, move early
     } else {
-      const twoLaneChance = 0.25 + 0.35*prog;          // two open-lane → forced move, up to ~60%
-      if(r < 0.20) obstacles.push(makeLow(LANES[rand3()], z));
-      else if(r < 0.42) obstacles.push(makeHigh(LANES[rand3()], z));
-      else if(r < 0.60) obstacles.push(makeTrain(LANES[rand3()], z));
+      const twoLaneChance = 0.32 + 0.48*prog;          // increasingly forces you into the one open lane (up to ~80%)
+      if(r < 0.16) obstacles.push(makeLow(LANES[rand3()], z));
+      else if(r < 0.34) obstacles.push(makeHigh(LANES[rand3()], z));
+      else if(r < 0.50) obstacles.push(makeTrain(LANES[rand3()], z));
       else {
-        const blocked = shuffle([0,1,2]).slice(0, Math.random()<twoLaneChance?2:1);
-        blocked.forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
-      }
-      // higher up, sometimes chain a jump/duck right behind a block so you must move AND time it
-      if(prog > 0.55 && Math.random() < 0.28*prog){
-        const open = shuffle([0,1,2])[0];
-        obstacles.push(Math.random()<0.5 ? makeLow(LANES[open], z+360) : makeHigh(LANES[open], z+360));
+        const order = shuffle([0,1,2]);
+        const nBlocked = Math.random()<twoLaneChance ? 2 : 1;
+        order.slice(0, nBlocked).forEach(li=> obstacles.push(makeObstacle(LANES[li], z)));
+        // later on, chain a second wall that opens a DIFFERENT lane → a forced weave (the main way to get caught out)
+        if(nBlocked===2 && prog>0.5 && Math.random() < 0.30 + 0.4*prog){
+          const open = order[2];                                    // lane the first wall leaves open
+          const nextOpen = shuffle([0,1,2].filter(i=>i!==open))[0]; // force a shift to a new lane
+          [0,1,2].filter(i=>i!==nextOpen).forEach(li=> obstacles.push(makeObstacle(LANES[li], z+560)));
+        }
       }
     }
   }
@@ -738,7 +744,7 @@
   // ---- Input ----
   function moveLeft(){ if(state!==STATE.PLAY)return; if(player.targetX>-1){player.targetX-=1;SFX.lane();} }
   function moveRight(){ if(state!==STATE.PLAY)return; if(player.targetX<1){player.targetX+=1;SFX.lane();} }
-  function jump(){ if(state!==STATE.PLAY)return; if(player.grounded&&!player.rolling){player.vy=15.5;player.grounded=false;SFX.jump();} }
+  function jump(){ if(state!==STATE.PLAY)return; if(player.grounded&&!player.rolling){player.vy=17.5;player.grounded=false;SFX.jump();} }
   function roll(){ if(state!==STATE.PLAY)return;
     if(!player.grounded){ player.vy=-18; } // fast-fall into roll
     player.rolling=true; player.rollT=0.55; SFX.roll();
@@ -814,6 +820,7 @@
   });
   schedInput.addEventListener('input', ()=>{
     schedCount.textContent = schedInput.value.length + ' / 500';
+    autoIdx = 0;   // edited the list — start again from the top
     refreshStartBtn(); saveTasks();
   });
 
@@ -821,6 +828,7 @@
   const scheduleBtn = document.getElementById('scheduleBtn');
   function setScheduleMode(on){
     scheduleMode = on;
+    if(on) autoIdx = 0;   // start at the top of the list
     document.getElementById('taskWrap').classList.toggle('hidden', on);
     document.getElementById('scheduleWrap').classList.toggle('hidden', !on);
     document.getElementById('setupSub').classList.toggle('hidden', on);
@@ -851,7 +859,8 @@
     if(doneBtn.disabled) return;
     stopSpeech();
     if(scheduleMode){
-      showSetup();   // back to the day's list, left intact
+      autoIdx++;        // task done — move down to the next one in the list
+      showSetup();      // back to the day's list, left intact
       return;
     }
     // clear only the slot of the task they hit; keep the others as-is
@@ -863,6 +872,7 @@
   const doneEarlyBtn=document.getElementById('doneEarlyBtn');
   doneEarlyBtn.onclick=()=>{
     stopSpeech();
+    if(scheduleMode) autoIdx++;   // finished early — advance down the list
     showSetup();   // cut the break short — keep all tasks, go straight back so they can play again
   };
 
@@ -1009,7 +1019,7 @@
     }
     if(threat){
       // jump/roll are reactive (single trigger), lane changes are debounced
-      if(threat.type==='low'){ if(player.grounded && !player.rolling && threat.z<360){ player.vy=15.5; player.grounded=false; } }
+      if(threat.type==='low'){ if(player.grounded && !player.rolling && threat.z<360){ player.vy=17.5; player.grounded=false; } }
       else if(threat.type==='high'){ if(!player.rolling && threat.z<320){ player.rolling=true; player.rollT=0.55; } }
       else if(demoTurnT<=0){
         const blocked=new Set();
@@ -1068,7 +1078,7 @@
           const sameLane = Math.abs(o.lane - player.x) < 0.55;
           if(sameLane){
             let hit=false;
-            if(o.type==='low'){ hit = player.y < 90; }
+            if(o.type==='low'){ hit = player.y < 64; }
             else if(o.type==='high'){ hit = !player.rolling; }
             else { hit = true; }
             if(hit && front<60 && front>-20 && !o.resolved){
@@ -1413,15 +1423,20 @@
     if(o.type==='train'){
       const back=project(o.lane,Math.max(o.z+o.len,CLAMP_Z));
       const w=o.w*s, wB=o.w*back.s, h=o.h*s, hB=o.h*back.s;
-      // body (side + top faces)
-      ctx.fillStyle=shade(col,-30);
-      ctx.beginPath();
-      ctx.moveTo(p.x-w,p.y);ctx.lineTo(back.x-wB,back.y);
-      ctx.lineTo(back.x-wB,back.y-hB);ctx.lineTo(p.x-w,p.y-h);ctx.closePath();ctx.fill();
+      const leftWall=()=>{ ctx.beginPath();
+        ctx.moveTo(p.x-w,p.y); ctx.lineTo(back.x-wB,back.y);
+        ctx.lineTo(back.x-wB,back.y-hB); ctx.lineTo(p.x-w,p.y-h); ctx.closePath(); ctx.fill(); };
+      const rightWall=()=>{ ctx.beginPath();
+        ctx.moveTo(p.x+w,p.y); ctx.lineTo(back.x+wB,back.y);
+        ctx.lineTo(back.x+wB,back.y-hB); ctx.lineTo(p.x+w,p.y-h); ctx.closePath(); ctx.fill(); };
+      const nearIsRight = o.lane < 0;   // a box to your left shows its right wall; one to your right shows its left
+      // far wall first (darker), then roof, then the near wall on top — so the body reads solid from either side
+      ctx.fillStyle=shade(col,-46); if(nearIsRight) leftWall(); else rightWall();
       ctx.fillStyle=shade(col,18);
       ctx.beginPath();
       ctx.moveTo(p.x-w,p.y-h);ctx.lineTo(back.x-wB,back.y-hB);
       ctx.lineTo(back.x+wB,back.y-hB);ctx.lineTo(p.x+w,p.y-h);ctx.closePath();ctx.fill();
+      ctx.fillStyle=shade(col,-30); if(nearIsRight) rightWall(); else leftWall();
       // roof label
       const cxRoof=(p.x+back.x)/2, cyRoof=((p.y-h)+(back.y-hB))/2, roofExt=(p.y-h)-(back.y-hB);
       drawLabel(lbl, cxRoof, cyRoof, (w+wB)*0.92, Math.max(10,roofExt*1.4), {squashY:0.6, color:fg, dark});
@@ -1605,7 +1620,7 @@
       const tailZ=o.type==='train'?-o.len:0, front=o.z;
       if(front<70&&front>tailZ-40&&Math.abs(o.lane-player.x)<0.55){
         let hit=false;
-        if(o.type==='low')hit=player.y<90; else if(o.type==='high')hit=!player.rolling; else hit=true;
+        if(o.type==='low')hit=player.y<64; else if(o.type==='high')hit=!player.rolling; else hit=true;
         if(hit&&front<60&&front>-20&&!o.resolved){ o.resolved=true; player.dead=true; spawnCrash(); SFX.crash(); return; }
       }
     }
@@ -1773,7 +1788,7 @@
   }
   // controls: P1 = W A S D, P2 = arrow keys
   function pmove(Wld,d){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; const nx=Math.max(-1,Math.min(1,pl.targetX+d)); if(nx!==pl.targetX){pl.targetX=nx;SFX.lane();} }
-  function pjump(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(pl.grounded&&!pl.rolling){pl.vy=15.5;pl.grounded=false;SFX.jump();} }
+  function pjump(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(pl.grounded&&!pl.rolling){pl.vy=17.5;pl.grounded=false;SFX.jump();} }
   function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; pl.rolling=true; pl.rollT=0.55; SFX.roll(); }
   function twoPKey(e){
     const k=e.key;
