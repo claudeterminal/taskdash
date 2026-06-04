@@ -24,6 +24,27 @@
   canvas{display:block;width:100%;height:100%;background:#1a1130;transition:filter .2s ease;}
   #game.blurred{filter:blur(5px) brightness(0.45);}
 
+  /* ---- Two-player split screen ---- */
+  #stage.twop{aspect-ratio:1080/960;height:auto;width:100%;max-height:100%;}
+  .toptab{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;
+    font-family:'Bungee',cursive;font-size:clamp(13px,3.4vw,17px);letter-spacing:.5px;
+    color:#fff;background:rgba(22,224,189,.18);border:2px solid var(--cool);
+    border-radius:999px;padding:8px 18px;cursor:pointer;backdrop-filter:blur(3px);
+    box-shadow:0 4px 0 rgba(11,107,92,.5);transition:transform .08s ease;
+  }
+  .toptab:active{transform:translateX(-50%) translateY(2px);}
+  #twoExit{background:rgba(255,59,107,.2);border-color:var(--hot);box-shadow:0 4px 0 rgba(150,20,50,.5);}
+  .vs-wrap{display:flex;gap:14px;align-items:stretch;justify-content:center;width:100%;max-width:460px;}
+  .vs-card{flex:1;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.18);border-radius:16px;padding:16px 10px;}
+  .vs-card.win{border-color:var(--neon);background:rgba(255,210,63,.12);box-shadow:0 0 30px rgba(255,210,63,.25);}
+  .vs-card .who{font-family:'Bungee',cursive;font-size:clamp(16px,4.6vw,22px);color:var(--cool);}
+  .vs-card .vt{font-family:'Bungee',cursive;font-size:clamp(22px,7vw,34px);color:#fff;margin-top:4px;}
+  .vs-card .vc{color:var(--neon);font-weight:700;margin-top:2px;}
+  #twoWinner{font-family:'Bungee',cursive;color:var(--neon);text-shadow:0 4px 0 var(--hot);
+    font-size:clamp(26px,8vw,44px);transform:rotate(-2deg);}
+
+
   .overlay{
     position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#fff;padding:24px;gap:16px;z-index:5;
@@ -168,6 +189,7 @@
 
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
+      <button id="twoPlayerBtn" class="toptab" type="button">👥 2 Players</button>
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
       <div class="sub" id="setupSub">Name up to 3 <span class="c-yellow">tasks</span> you want to finish in <span class="c-aqua">real</span> life. Crash into a <span class="c-yeltext">random</span> one, and you'll be stuck working on it for a few minutes <span class="c-aqua">before</span> you can replay.</div>
       <div class="sub hidden" id="scheduleSub">Enter up to 50 <span class="c-yellow">tasks</span> for the entire day and do them in <span class="c-aqua">order</span>. Separate with new lines or commas.</div>
@@ -202,6 +224,26 @@
       <div class="best" id="bestLine"></div>
       <button class="btn" id="doneEarlyBtn">Done early,<br>Play Again.</button>
       <button class="btn" id="doneBtn" disabled>Done my task,<br>Play Again.</button>
+    </div>
+
+    <!-- Two-player UI -->
+    <button id="twoExit" class="toptab hidden" type="button">✕ exit</button>
+    <div id="twoOverScreen" class="overlay hidden">
+      <div id="twoWinner">—</div>
+      <div class="vs-wrap">
+        <div class="vs-card" id="p1Card">
+          <div class="who">Player 1</div>
+          <div class="vt" id="p1Time">0:00</div>
+          <div class="vc">⛁ <span id="p1Coins">0</span></div>
+        </div>
+        <div class="vs-card" id="p2Card">
+          <div class="who">Player 2</div>
+          <div class="vt" id="p2Time">0:00</div>
+          <div class="vc">⛁ <span id="p2Coins">0</span></div>
+        </div>
+      </div>
+      <button class="btn" id="twoAgainBtn">Play Again</button>
+      <button class="btn ghost" id="twoMenuBtn">Menu</button>
     </div>
   </div>
 </div>
@@ -564,6 +606,7 @@
 
   window.addEventListener('keydown',e=>{
     const typing = e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA');
+    if(twoP){ if(!typing) twoPKey(e); return; }
     if(state===STATE.START || state===STATE.OVER) return; // typing / locked out — handled elsewhere
     if(typing) return;
     if((e.key==='p'||e.key==='P'||e.key==='Escape') && (state===STATE.PLAY||state===STATE.PAUSE)){e.preventDefault();togglePause();return;}
@@ -1341,6 +1384,7 @@
     runId=requestAnimationFrame(loop);   // schedule the next frame FIRST, so a stray error can never freeze the game
     try{
       const dt=Math.min(40, t-lastTime); lastTime=t;
+      if(twoP){ step2p(dt); return; }   // two-player split screen takes over the frame
       const playing = (state===STATE.PLAY);
       if(playing && !player.dead){ update(dt, true); }
       else if(playing && player.dead){
@@ -1368,6 +1412,187 @@
     nextSpawnAt = 1400;
     nextCoinAt = 220;
   }
+
+  // ================= TWO-PLAYER SPLIT SCREEN =================
+  // Both halves are full, independent runs of the same game, time-sliced through the
+  // single set of game globals: restore a world -> simulate/draw it -> snapshot it back.
+  // No tasks/lockout here — it's a race: whoever survives longer wins (coins break ties).
+  let twoP=false, twoState='';   // '', 'play', 'results'
+  const W1={done:false,crashTime:0,crashCoins:0}, W2={done:false,crashTime:0,crashCoins:0};
+  function snapshotInto(t){
+    t.player=player; t.obstacles=obstacles; t.coins=coins; t.particles=particles;
+    t.speed=speed; t.baseSpeed=baseSpeed; t.dist=dist; t.score=score; t.coinCount=coinCount;
+    t.runTime=runTime; t.stripeOffset=stripeOffset; t.worldShake=worldShake; t.spawnZ=spawnZ;
+    t.nextSpawnAt=nextSpawnAt; t.nextCoinAt=nextCoinAt; t.lastLevel=lastLevel;
+  }
+  function restoreFrom(s){
+    player=s.player; obstacles=s.obstacles; coins=s.coins; particles=s.particles;
+    speed=s.speed; baseSpeed=s.baseSpeed; dist=s.dist; score=s.score; coinCount=s.coinCount;
+    runTime=s.runTime; stripeOffset=s.stripeOffset; worldShake=s.worldShake; spawnZ=s.spawnZ;
+    nextSpawnAt=s.nextSpawnAt; nextCoinAt=s.nextCoinAt; lastLevel=s.lastLevel;
+  }
+  function makeFreshWorld(t){
+    reset();
+    coinLine(LANES[1],360,7); coinLine(LANES[0],820,5); coinLine(LANES[2],1180,5);
+    obstacles.push(makeLow(LANES[2],980)); obstacles.push(makeHigh(LANES[0],1500));
+    nextSpawnAt=1700; nextCoinAt=260;
+    t.done=false; t.crashTime=0; t.crashCoins=0;
+    snapshotInto(t);
+  }
+  // a trimmed update: live physics + spawns + collisions, but no HUD/lockout/level-toast
+  function update2p(dt){
+    speed=(baseSpeed+Math.min(1.3,dist*0.0009))*0.95;
+    const dz=speed*(dt/16.67), f=dt/16.67;
+    dist+=dz; score+=dz*0.6; runTime+=dt;
+    stripeOffset=(stripeOffset+dz)%240;
+    planSpawns(); planCoins();
+    player.x+=(player.targetX-player.x)*Math.min(1,dt*0.035);
+    if(!player.grounded){ player.y+=player.vy*f; player.vy-=0.85*f; if(player.y<=0){player.y=0;player.vy=0;player.grounded=true;} }
+    if(player.rolling){ player.rollT-=dt*0.001; if(player.rollT<=0)player.rolling=false; }
+    if(player.grounded&&!player.rolling)player.legPhase+=dz*0.05;
+    for(const o of obstacles)o.z-=dz;
+    for(const c of coins)c.z-=dz;
+    for(const o of obstacles){
+      const tailZ=o.type==='train'?-o.len:0, front=o.z;
+      if(front<70&&front>tailZ-40&&Math.abs(o.lane-player.x)<0.55){
+        let hit=false;
+        if(o.type==='low')hit=player.y<90; else if(o.type==='high')hit=!player.rolling; else hit=true;
+        if(hit&&front<60&&front>-20&&!o.resolved){ o.resolved=true; player.dead=true; spawnCrash(); SFX.crash(); return; }
+      }
+    }
+    for(const c of coins){
+      if(c.got)continue;
+      if(c.z<60&&c.z>-30){
+        const ph=player.y+(player.rolling?20:55);
+        if(Math.abs(c.lane-player.x)<0.5&&Math.abs(ph-c.y)<95){ c.got=true; coinCount++; score+=15; SFX.coin(); spawnCoinBurst(c.lane,c.y); }
+      }
+    }
+    obstacles=obstacles.filter(o=> o.type==='train'?(o.z+o.len>PASS_Z):!offScreenBottom(o));
+    coins=coins.filter(c=>c.z>PASS_Z&&!c.got);
+    for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.life-=dt*0.002;p.r*=0.99;}
+    particles=particles.filter(p=>p.life>0);
+    if(worldShake>0)worldShake*=0.9;
+  }
+  function drawWorldInto(offsetX,label,done){
+    ctx.save();
+    ctx.beginPath(); ctx.rect(offsetX,0,W,H); ctx.clip();
+    ctx.translate(offsetX,0);
+    draw();   // renders the current globals into the 0..W region (now offset)
+    // mini HUD
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.32)'; ctx.fillRect(12,12,184,38);
+    ctx.textBaseline='middle'; ctx.font='700 24px Fredoka, sans-serif';
+    ctx.fillStyle='#fff'; ctx.fillText(label+'  '+fmtTime(Math.floor(runTime/1000)), 22, 31);
+    ctx.fillStyle='#ffd23f'; ctx.fillText('⛁ '+coinCount, 132, 31);
+    if(done){
+      ctx.fillStyle='rgba(8,4,20,.45)'; ctx.fillRect(0,0,W,H);
+      ctx.textAlign='center'; ctx.fillStyle='#ff3b6b';
+      ctx.font='700 54px Bungee, cursive';
+      ctx.fillText('CRASHED', W/2, H*0.46);
+    }
+    ctx.restore();
+    ctx.restore();
+  }
+  function drawDivider(){
+    ctx.save();
+    ctx.fillStyle='rgba(0,0,0,.65)'; ctx.fillRect(W-3,0,6,H);
+    ctx.fillStyle='rgba(255,255,255,.22)'; ctx.fillRect(W-1,0,2,H);
+    ctx.restore();
+  }
+  function step2p(dt){
+    if(twoState==='play'){
+      restoreFrom(W1);
+      if(!W1.done){ update2p(dt); if(player.dead){ W1.done=true; W1.crashTime=runTime; W1.crashCoins=coinCount; } }
+      drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
+      restoreFrom(W2);
+      if(!W2.done){ update2p(dt); if(player.dead){ W2.done=true; W2.crashTime=runTime; W2.crashCoins=coinCount; } }
+      drawWorldInto(W,'P2',W2.done); snapshotInto(W2);
+      drawDivider();
+      if(W1.done&&W2.done) endTwoPlayer();
+    } else {
+      restoreFrom(W1); drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
+      restoreFrom(W2); drawWorldInto(W,'P2',W2.done); snapshotInto(W2);
+      drawDivider();
+    }
+  }
+  function startTwoPlayer(){
+    twoP=true; twoState='play'; stopSpeech();
+    cvs.width=1080; cvs.height=H;
+    document.getElementById('stage').classList.add('twop');
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    document.getElementById('overScreen').classList.add('hidden');
+    document.getElementById('pauseScreen').classList.add('hidden');
+    document.getElementById('twoOverScreen').classList.add('hidden');
+    document.getElementById('twoExit').classList.remove('hidden');
+    cvs.classList.remove('blurred');
+    makeFreshWorld(W1); makeFreshWorld(W2);
+    SFX.resume(); SFX.start(); SFX.startBg();
+  }
+  function endTwoPlayer(){
+    twoState='results';
+    const t1=W1.crashTime,c1=W1.crashCoins,t2=W2.crashTime,c2=W2.crashCoins;
+    let win=0; if(t1>t2)win=1; else if(t2>t1)win=2; else if(c1>c2)win=1; else if(c2>c1)win=2;
+    document.getElementById('p1Time').textContent=fmtTime(Math.floor(t1/1000));
+    document.getElementById('p1Coins').textContent=c1;
+    document.getElementById('p2Time').textContent=fmtTime(Math.floor(t2/1000));
+    document.getElementById('p2Coins').textContent=c2;
+    document.getElementById('twoWinner').textContent = win===0 ? "It's a tie!" : 'Player '+win+' wins!';
+    document.getElementById('p1Card').classList.toggle('win',win===1);
+    document.getElementById('p2Card').classList.toggle('win',win===2);
+    document.getElementById('twoOverScreen').classList.remove('hidden');
+    SFX.start();
+  }
+  function restartTwoPlayer(){
+    document.getElementById('twoOverScreen').classList.add('hidden');
+    document.getElementById('p1Card').classList.remove('win');
+    document.getElementById('p2Card').classList.remove('win');
+    makeFreshWorld(W1); makeFreshWorld(W2);
+    twoState='play'; SFX.start();
+  }
+  function quitTwoPlayer(){
+    twoP=false; twoState='';
+    cvs.width=W; cvs.height=H;
+    document.getElementById('stage').classList.remove('twop');
+    document.getElementById('twoExit').classList.add('hidden');
+    document.getElementById('twoOverScreen').classList.add('hidden');
+    reset(); seedDemo(); setBgBlur(true);
+    showSetup();
+  }
+  // controls: P1 = W A S D, P2 = arrow keys
+  function pmove(Wld,d){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; const nx=Math.max(-1,Math.min(1,pl.targetX+d)); if(nx!==pl.targetX){pl.targetX=nx;SFX.lane();} }
+  function pjump(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(pl.grounded&&!pl.rolling){pl.vy=15.5;pl.grounded=false;SFX.jump();} }
+  function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; pl.rolling=true; pl.rollT=0.55; SFX.roll(); }
+  function twoPKey(e){
+    const k=e.key;
+    if(twoState!=='play'){ if(k==='Escape')quitTwoPlayer(); return; }
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(k))e.preventDefault();
+    if(k==='a'||k==='A')pmove(W1,-1);
+    else if(k==='d'||k==='D')pmove(W1,1);
+    else if(k==='w'||k==='W')pjump(W1);
+    else if(k==='s'||k==='S')pduck(W1);
+    else if(k==='ArrowLeft')pmove(W2,-1);
+    else if(k==='ArrowRight')pmove(W2,1);
+    else if(k==='ArrowUp')pjump(W2);
+    else if(k==='ArrowDown')pduck(W2);
+    else if(k==='Escape')quitTwoPlayer();
+  }
+  // touch: left half drives P1, right half drives P2 (multi-touch, per finger)
+  const tp={};
+  cvs.addEventListener('touchstart',e=>{ if(!twoP)return; const r=cvs.getBoundingClientRect();
+    for(const t of e.changedTouches){ tp[t.identifier]={x:t.clientX,y:t.clientY,half:(t.clientX<r.left+r.width/2?1:2),used:false}; } },{passive:true});
+  cvs.addEventListener('touchmove',e=>{ if(!twoP)return;
+    for(const t of e.changedTouches){ const s=tp[t.identifier]; if(!s||s.used)continue;
+      const dx=t.clientX-s.x, dy=t.clientY-s.y, adx=Math.abs(dx), ady=Math.abs(dy);
+      if(adx<22&&ady<22)continue; s.used=true; const Wld=s.half===1?W1:W2;
+      if(adx>ady){ dx>0?pmove(Wld,1):pmove(Wld,-1); } else { dy>0?pduck(Wld):pjump(Wld); } } },{passive:true});
+  cvs.addEventListener('touchend',e=>{ if(!twoP)return;
+    for(const t of e.changedTouches){ const s=tp[t.identifier]; if(s&&!s.used){ pjump(s.half===1?W1:W2); } delete tp[t.identifier]; } },{passive:true});
+  // wiring
+  document.getElementById('twoPlayerBtn').onclick=startTwoPlayer;
+  document.getElementById('twoExit').onclick=quitTwoPlayer;
+  document.getElementById('twoAgainBtn').onclick=restartTwoPlayer;
+  document.getElementById('twoMenuBtn').onclick=quitTwoPlayer;
 
   // boot: start the blurred home-screen demo with content already on the track
   reset();
