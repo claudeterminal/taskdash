@@ -20,7 +20,7 @@
     position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:radial-gradient(circle at 50% 0%, #2a1a5e 0%, #150a33 60%, #0d0820 100%);
   }
-  #stage{position:relative;height:100%;aspect-ratio:9/16;max-width:100%;box-shadow:0 0 80px rgba(0,0,0,.6);background:#0b0718;overflow:hidden;}
+  #stage{position:relative;height:100%;max-height:820px;aspect-ratio:9/16;max-width:100%;box-shadow:0 0 80px rgba(0,0,0,.6);background:#0b0718;overflow:hidden;}
   canvas{display:block;width:100%;height:100%;background:#1a1130;transition:filter .2s ease;}
   #game.blurred{filter:blur(5px) brightness(0.45);}
 
@@ -52,7 +52,7 @@
   .how-x:active{transform:scale(.9);}
   .how-cap{font-family:'Fredoka',sans-serif;font-weight:600;font-size:clamp(15px,4vw,18px);
     color:#fff;margin:28px 14px 12px;min-height:2.6em;line-height:1.32;}
-  #howCanvas{width:100%;aspect-ratio:1/1;background:#0e0a26;border-radius:14px;display:block;}
+  #howCanvas{width:100%;height:auto;aspect-ratio:1/1;background:#0e0a26;border-radius:14px;display:block;}
   .how-dots{display:flex;gap:7px;justify-content:center;margin:12px 0;}
   .how-dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.25);transition:background .2s;}
   .how-dot.on{background:var(--neon);}
@@ -1520,14 +1520,19 @@
     // mini HUD, in the column's own coordinates
     ctx.save();
     ctx.translate(offsetX,0);
-    ctx.fillStyle='rgba(0,0,0,.34)'; ctx.fillRect(8,10,150,30);
-    ctx.textBaseline='middle'; ctx.font='700 17px Fredoka, sans-serif';
-    ctx.fillStyle='#fff'; ctx.fillText(label+'  '+fmtTime(Math.floor(runTime/1000)), 15, 25);
-    ctx.fillStyle='#ffd23f'; ctx.fillText('⛁ '+coinCount, 104, 25);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    // who-am-I tag (YOU is highlighted)
+    ctx.font='700 17px Bungee, cursive';
+    const tw=ctx.measureText(label).width;
+    ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(HALF/2-tw/2-13, 9, tw+26, 27);
+    ctx.fillStyle=(label==='YOU')?'#16e0bd':'#ffd23f';
+    ctx.fillText(label, HALF/2, 23);
+    // time + coins
+    ctx.font='700 14px Fredoka, sans-serif';
+    ctx.fillStyle='#fff'; ctx.fillText(fmtTime(Math.floor(runTime/1000))+'    ⛁ '+coinCount, HALF/2, 49);
     if(done){
       ctx.fillStyle='rgba(8,4,20,.45)'; ctx.fillRect(0,0,HALF,H);
-      ctx.textAlign='center'; ctx.fillStyle='#ff3b6b';
-      ctx.font='700 32px Bungee, cursive';
+      ctx.fillStyle='#ff3b6b'; ctx.font='700 32px Bungee, cursive';
       ctx.fillText('CRASHED', HALF/2, H*0.46);
     }
     ctx.restore();
@@ -1543,7 +1548,7 @@
     if(twoState==='play'){
       restoreFrom(W1);
       if(!W1.done){ update2p(dt); if(player.dead){ W1.done=true; W1.crashTime=runTime; W1.crashCoins=coinCount; } }
-      drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
+      drawWorldInto(0,'YOU',W1.done); snapshotInto(W1);
       if(W2.joined){
         restoreFrom(W2);
         if(!W2.done){ update2p(dt); if(player.dead){ W2.done=true; W2.crashTime=runTime; W2.crashCoins=coinCount; } }
@@ -1555,7 +1560,7 @@
       // round ends when every player who's in is done (P2 may never have joined)
       if(W1.done && (W2.joined ? W2.done : true)) endTwoPlayer();
     } else {
-      restoreFrom(W1); drawWorldInto(0,'P1',W1.done); snapshotInto(W1);
+      restoreFrom(W1); drawWorldInto(0,'YOU',W1.done); snapshotInto(W1);
       if(W2.joined){ restoreFrom(W2); drawWorldInto(W/2,'P2',W2.done); snapshotInto(W2); }
       else drawWaitingPanel(W/2);
       drawDivider();
