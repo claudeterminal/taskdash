@@ -1512,9 +1512,11 @@
     const HALF=W/2;
     ctx.save();
     ctx.beginPath(); ctx.rect(offsetX,0,HALF,H); ctx.clip();
-    // the full 540-wide world is squeezed into this half-width column (keeps the portrait stage)
+    // fill the column with the sky colour so the space above the (uniformly scaled) scene blends in
+    const Tw=theme(); ctx.fillStyle=(Tw&&Tw.sky)?Tw.sky[0]:'#0e0a26'; ctx.fillRect(offsetX,0,HALF,H);
+    // draw the world at UNIFORM scale (correct proportions, no squish), anchored to the bottom
     ctx.save();
-    ctx.translate(offsetX,0); ctx.scale(0.5,1);
+    ctx.translate(offsetX, H*0.5); ctx.scale(0.5,0.5);
     draw();
     ctx.restore();
     // mini HUD, in the column's own coordinates
