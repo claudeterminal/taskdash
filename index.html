@@ -32,7 +32,7 @@
   .hidden{display:none!important;}
   /* task-entry screen: darker + blurrier backdrop so the text reads clearly over the live demo */
   #startScreen{
-    background:radial-gradient(circle at 50% 40%, rgba(35,17,82,.55) 0%, rgba(9,5,22,.9) 60%, rgba(8,4,18,.95) 100%);
+    background:radial-gradient(circle at 50% 40%, rgba(45,24,98,.34) 0%, rgba(14,8,30,.66) 62%, rgba(11,7,24,.76) 100%);
   }
   .title{
     font-family:'Bungee',cursive;line-height:.95;letter-spacing:1px;
@@ -59,9 +59,14 @@
     padding:11px 14px;outline:none;text-align:center;transition:border-color .15s ease;}
   .task-input::placeholder{color:rgba(255,255,255,.4);font-weight:500;}
   .task-input:focus{border-color:var(--cool);}
-  .hit-task{font-family:'Bungee',cursive;font-size:clamp(26px,8vw,44px);color:var(--hot);
-    line-height:1.05;max-width:16ch;text-shadow:0 0 24px rgba(255,59,107,.5);}
-  .lock-note{font-size:14px;opacity:.8;font-weight:500;}
+  .go-finish{font-size:clamp(15px,4.4vw,21px);font-weight:600;line-height:1.3;max-width:24ch;opacity:.95;}
+  .task-name{font-family:'Bungee',cursive;color:var(--hot);font-size:1.15em;text-shadow:0 0 16px rgba(255,59,107,.5);
+    display:inline-block;animation:taskFlash 1s ease-in-out infinite;}
+  @keyframes taskFlash{
+    0%,100%{opacity:1;transform:scale(1);text-shadow:0 0 14px rgba(255,59,107,.45);}
+    50%{opacity:.4;transform:scale(1.08);text-shadow:0 0 30px rgba(255,59,107,1);}
+  }
+  .lock-note{font-size:13px;opacity:.75;font-weight:500;}
   .countdown{font-family:'Bungee',cursive;font-size:clamp(44px,14vw,80px);color:var(--cool);
     letter-spacing:2px;text-shadow:0 0 26px rgba(22,224,189,.55);}
   .voice-toggle{font-size:14px;padding:9px 20px;}
@@ -73,7 +78,7 @@
   .stat{display:flex;flex-direction:column;gap:2px;}
   .stat .v{font-family:'Bungee',cursive;font-size:clamp(22px,6vw,34px);color:var(--neon);}
   .stat .v.gold{color:var(--neon);}
-  .best{color:var(--hot);font-family:'Bungee',cursive;font-size:18px;margin-top:6px;}
+  .best{color:#fff;font-family:'Bungee',cursive;font-size:18px;margin-top:6px;}
 
   /* HUD */
   #hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;
@@ -130,9 +135,8 @@
 
     <!-- Game over / task lock -->
     <div id="overScreen" class="overlay hidden">
-      <div class="label">Crashed Into</div>
-      <div class="hit-task" id="hitTask">—</div>
-      <div class="lock-note" id="lockNote">Go get it done. You can run again in</div>
+      <div class="go-finish">Go finish <span class="task-name" id="hitTask">—</span> that you crashed into</div>
+      <div class="lock-note" id="lockNote">you can run again in:</div>
       <div class="countdown" id="countdown">3:00</div>
       <button class="btn ghost voice-toggle" id="voiceBtn">🔊 Voice on</button>
       <div class="stat-row">
@@ -209,11 +213,26 @@
   function stopSpeech(){ try{ window.speechSynthesis.cancel(); }catch(e){} }
   function speakUpdate(){
     if(voiceMuted) return;
+    const task = hitTask || 'your task';
     const m=Math.floor(countdownLeft/60), s=countdownLeft%60;
     let t = m>0 ? `${m} minute${m!==1?'s':''}` : '';
     if(s>0) t += (t?' and ':'') + `${s} second${s!==1?'s':''}`;
     if(!t) t = 'almost no time';
-    speak(`${hitTask || 'your task'}. ${t} left.`);
+    const lines = [
+      `Get up and finish ${task}. You've got this.`,
+      `Stop stalling. ${task} is waiting. ${t} left.`,
+      `Future you will thank you. Go do ${task} now.`,
+      `${task} won't take as long as you think. Start it.`,
+      `You're stronger than the excuse. Go finish ${task}.`,
+      `Small steps count. Knock out ${task}.`,
+      `Don't let ${task} sit. ${t} on the clock.`,
+      `One task, full focus. ${task}. Let's go.`,
+      `Discipline now, freedom later. Finish ${task}.`,
+      `Make it happen. ${task}. You can run again in ${t}.`,
+      `Move. ${task} is calling. You can do hard things.`,
+      `Progress beats perfect. Just begin ${task}.`,
+    ];
+    speak(lines[Math.floor(Math.random()*lines.length)]);
   }
 
   let player, obstacles, coins, particles;
@@ -569,7 +588,7 @@
     document.getElementById('finalScore').textContent=fmtTime(Math.floor(runTime/1000));
     document.getElementById('finalCoins').textContent=coinCount;
     document.getElementById('finalDist').textContent=Math.floor(dist/10)+'m';
-    document.getElementById('bestLine').textContent='Best  '+fmtTime(Math.floor(bestTime/1000));
+    document.getElementById('bestLine').textContent='🏆 Best  '+fmtTime(Math.floor(bestTime/1000));
     document.getElementById('hitTask').textContent = hitTask || 'a task';
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('overScreen').classList.remove('hidden');
@@ -605,38 +624,45 @@
   }
 
   // ---- Update ----
-  // auto-pilot used for the background demo during the lockout
-  function demoAI(){
+  // auto-pilot used for the background demo; decisions are debounced so it moves smoothly
+  let demoTurnT=0;
+  function demoAI(dt){
+    demoTurnT -= dt;
     let threat=null, td=Infinity;
     for(const o of obstacles){
-      if(o.z>30 && o.z<950 && Math.abs(o.lane-player.targetX)<0.5 && o.z<td){ threat=o; td=o.z; }
+      if(o.z>30 && o.z<700 && Math.abs(o.lane-player.targetX)<0.5 && o.z<td){ threat=o; td=o.z; }
     }
     if(threat){
-      if(threat.type==='low'){ if(player.grounded && !player.rolling && threat.z<380){ player.vy=15.5; player.grounded=false; } }
-      else if(threat.type==='high'){ if(!player.rolling && threat.z<340){ player.rolling=true; player.rollT=0.55; } }
-      else {
+      // jump/roll are reactive (single trigger), lane changes are debounced
+      if(threat.type==='low'){ if(player.grounded && !player.rolling && threat.z<360){ player.vy=15.5; player.grounded=false; } }
+      else if(threat.type==='high'){ if(!player.rolling && threat.z<320){ player.rolling=true; player.rollT=0.55; } }
+      else if(demoTurnT<=0){
         const blocked=new Set();
-        for(const o of obstacles){ if(o.z>0 && o.z<750 && (o.type==='block'||o.type==='train')) blocked.add(o.lane); }
+        for(const o of obstacles){ if(o.z>0 && o.z<700 && (o.type==='block'||o.type==='train')) blocked.add(o.lane); }
         const open=LANES.filter(l=>!blocked.has(l));
-        if(open.length) player.targetX = open.reduce((a,b)=> Math.abs(b-player.x)<Math.abs(a-player.x)?b:a);
+        if(open.length){
+          const target=open.reduce((a,b)=> Math.abs(b-player.x)<Math.abs(a-player.x)?b:a);
+          if(target!==player.targetX){ player.targetX=target; demoTurnT=400; }
+        }
       }
-    } else {
+    } else if(demoTurnT<=0){
+      // gentle, occasional drift toward a coin lane — never frantic
       let coinLane=null, cd=Infinity;
-      for(const c of coins){ if(!c.got && c.z>40 && c.z<700 && c.z<cd){ coinLane=c.lane; cd=c.z; } }
-      player.targetX = coinLane!==null ? coinLane : 0;
+      for(const c of coins){ if(!c.got && c.z>80 && c.z<480 && c.z<cd){ coinLane=c.lane; cd=c.z; } }
+      if(coinLane!==null && coinLane!==player.targetX){ player.targetX=coinLane; demoTurnT=450; }
     }
   }
 
   function update(dt, live=true){
-    // speed ramp
-    speed = baseSpeed + Math.min(9, dist*0.0006);
+    // speed ramp (trimmed ~5%)
+    speed = (baseSpeed + Math.min(9, dist*0.0006)) * 0.95;
     if(!live) speed = Math.min(speed, 11); // background demo stays calm
     const dz = speed*(dt/16.67); // world units to advance this frame
     const f = dt/16.67;          // frame-time factor so physics match real time at any refresh rate
     dist += dz;
     if(live){ score += dz*0.6; runTime += dt; }
     stripeOffset = (stripeOffset + dz) % 240;
-    if(!live) demoAI();
+    if(!live) demoAI(dt);
 
     planSpawns();
     planCoins();
