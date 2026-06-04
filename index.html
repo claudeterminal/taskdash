@@ -88,7 +88,7 @@
     50%{opacity:.78;transform:scale(1.05);}
   }
   .lock-note{font-size:clamp(16px,5.5vw,28px);color:#ff4757;font-weight:700;letter-spacing:.5px;
-    text-shadow:0 3px 0 #000;margin-bottom:4px;opacity:1;}
+    text-shadow:0 3px 0 #000;margin-bottom:-12px;opacity:1;}
   .countdown{font-family:'Bungee',cursive;font-size:clamp(44px,14vw,80px);color:#ff4757;
     letter-spacing:2px;text-shadow:0 5px 0 #000;}
   .countdown.times-up{font-size:clamp(20px,6vw,30px);letter-spacing:1px;}
@@ -414,8 +414,8 @@
     { name:'Neon City', sky:['#3a1f7a','#6a2f8c','#ff7a59'], sun:'255,220,140', sun2:'#ffcf73', horizon:'city', building:'30,15,60',
       road:'#241a3d', side:'#15243a', water:false, laneLine:'rgba(255,255,255,.18)', dash:'rgba(255,210,63,.35)', rail:'#3a2b5c',
       ob:['#16e0bd','#ff3b6b','#7b5cff','#ff924d','#ffd23f'], round:4 },
-    { name:'Jungle River', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17', grid:false,
-      road:'#1f6e57', side:'#1f4a22', water:true, laneLine:'rgba(220,255,200,.22)', dash:'rgba(180,140,80,.45)', rail:'#2c5a36',
+    { name:'Jungle Path', sky:['#0f3d24','#2f8c4f','#bfe07a'], sun:'210,255,170', sun2:null, horizon:'trees', building:'9,34,17', grass:true,
+      road:'#3a7a34', side:'#1f4a22', water:false, laneLine:'rgba(210,255,170,.3)', dash:'rgba(180,140,80,.45)', rail:'#2f6b34',
       ob:['#8a5a2a','#a9763a','#c9a35a','#6b3f1c','#b5853f'], round:11 },
     { name:'Desert', sky:['#c9743c','#e3a857','#ffe3a8'], sun:'255,235,180', sun2:'#ffe08a', horizon:'cactus', building:'120,72,32',
       road:'#8a6230', side:'#74582f', water:false, laneLine:'rgba(255,240,200,.22)', dash:'rgba(120,80,40,.5)', rail:'#5e4622',
@@ -424,10 +424,10 @@
       road:'#5f93c4', side:'#cfe6f5', water:true, laneLine:'rgba(255,255,255,.5)', dash:'rgba(120,170,210,.55)', rail:'#7fa6c8',
       ob:['#4dd0ff','#9fe8ff','#6ea8ff','#e6f7ff','#7fd0c8'], round:9 },
     { name:'Volcano', sky:['#2a0d0d','#7a1d10','#ff6a2a'], sun:'255,140,60', sun2:null, horizon:'volcano', building:'22,9,9',
-      road:'#2a1a1a', side:'#3a1410', water:false, laneLine:'rgba(255,150,80,.30)', dash:'rgba(255,90,30,.6)', rail:'#5a2418',
+      road:'#2a1a1a', side:'#3a1410', water:false, roadStyle:'embers', laneLine:'rgba(255,150,80,.30)', dash:'rgba(255,90,30,.6)', rail:'#5a2418',
       ob:['#ff5a2a','#ff8a3a','#ffb84d','#c0392b','#4a2a2a'], round:4 },
     { name:'Cosmic', sky:['#0d0b2a','#2a1a6a','#6a3fb0'], sun:'180,160,255', sun2:null, horizon:'cosmic', building:'20,15,50',
-      road:'#16122e', side:'#0e0a24', water:false, laneLine:'rgba(180,160,255,.30)', dash:'rgba(120,90,255,.5)', rail:'#3a2b6c',
+      road:'#16122e', side:'#0e0a24', water:false, roadStyle:'stars', laneLine:'rgba(180,160,255,.30)', dash:'rgba(120,90,255,.5)', rail:'#3a2b6c',
       ob:['#b06bff','#7b5cff','#ff6fb0','#6be3ff','#c0a0ff'], round:14 },
   ];
   function currentLevel(){ return Math.floor(runTime/10000)+1; }   // level 1 for first 10s, +1 every 10s
@@ -1098,13 +1098,7 @@
     ctx.lineTo(CX-halfFar,far.y);
     ctx.closePath();ctx.fill();
 
-    // lane divider lines (between lanes -> at +-0.5) — skipped for natural themes (jungle river)
-    if(T.grid!==false) for(const lx of [-0.5,0.5]){
-      ctx.strokeStyle=T.laneLine;ctx.lineWidth=2;
-      ctx.beginPath();
-      const a=project(lx,0),b=project(lx,FAR);
-      ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-    }
+    // (no solid lane-divider grid — the road pattern is dotted dashes by default, or a per-theme creative surface)
     if(T.water){
       // flowing ripples sweeping toward the camera
       const t=performance.now();
@@ -1116,8 +1110,24 @@
         const midY=(l.y+r.y)/2 - 7*l.s*Math.sin(z*0.02+t*0.003);
         ctx.beginPath();ctx.moveTo(l.x,l.y);ctx.quadraticCurveTo(CX,midY,r.x,r.y);ctx.stroke();
       }
-    } else {
-      // moving rail dashes in each lane for speed feel
+    } else if(T.roadStyle==='stars') {
+      // drifting glowing star-dots scattered across the road (cosmic)
+      const now=performance.now();
+      for(let z=-((stripeOffset)%70); z<FAR*0.95; z+=70){
+        if(z<0) continue;
+        for(let j=0;j<4;j++){
+          const lx = -1.2 + j*0.8 + 0.4*Math.sin(z*0.07 + j*1.7);
+          if(lx<-1.5 || lx>1.5) continue;
+          const p=project(lx,z);
+          const tw = 0.5+0.5*Math.sin(now*0.004 + z*0.05 + j);
+          ctx.fillStyle='rgba(205,195,255,'+(0.22+0.5*tw)*(p.s/near.s)+')';
+          ctx.beginPath();ctx.arc(p.x,p.y,Math.max(1,2.4*p.s),0,7);ctx.fill();
+        }
+      }
+    } else if(!T.grass) {
+      // moving lane dashes for speed feel (road/track themes); volcano embers glow
+      const glow = T.roadStyle==='embers';
+      if(glow){ ctx.shadowColor='rgba(255,90,20,.9)'; ctx.shadowBlur=12; }
       for(const lx of LANES){
         ctx.strokeStyle=T.dash;
         for(let z=-(stripeOffset);z<FAR;z+=240){
@@ -1127,16 +1137,22 @@
           ctx.beginPath();ctx.moveTo(t1.x,t1.y);ctx.lineTo(t2.x,t2.y);ctx.stroke();
         }
       }
+      if(glow){ ctx.shadowBlur=0; ctx.shadowColor='transparent'; }
     }
-    // grassy banks for natural themes (jungle river) — greenery instead of straight side lines
-    if(T.grid===false){
-      for(let z=-((stripeOffset)%120); z<FAR*0.8; z+=120){
+    // grass patterns scattered across the road (jungle path) — natural ground texture, no road lines
+    if(T.grass){
+      const spacing=84;
+      for(let z=-((stripeOffset)%spacing); z<FAR*0.9; z+=spacing){
         if(z<0) continue;
-        const pl=project(-1.62,z), pr=project(1.62,z);
-        grassTuft(pl.x,pl.y,pl.s); grassTuft(pr.x,pr.y,pr.s);
+        for(let j=0;j<3;j++){
+          const lx = -1.0 + j + 0.5*Math.sin(z*0.05 + j*2.1);
+          if(lx<-1.45 || lx>1.45) continue;
+          const p=project(lx,z);
+          grassTuft(p.x, p.y, p.s*0.5);
+        }
       }
     }
-    // outer side rails — clearly visible on the road / track themes
+    // outer side rails — clearly visible on every theme (green on the jungle path)
     if(T.grid!==false) for(const lx of [-1.6,1.6]){
       const a=project(lx,0),b=project(lx,FAR);
       ctx.strokeStyle=T.rail; ctx.lineWidth=Math.max(3,12*a.s);
