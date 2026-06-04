@@ -426,6 +426,29 @@
     speak(`${line} ${t} left.`);                               // always say how long is left
   }
 
+  // ---- Desktop / mobile OS notifications during the lockout ----
+  const notifyOK = ('Notification' in window);
+  function ensureNotifyPermission(){
+    try{ if(notifyOK && Notification.permission==='default') Notification.requestPermission(); }catch(e){}
+  }
+  function timeLeftPhrase(){
+    const m=Math.floor(countdownLeft/60), s=countdownLeft%60;
+    let t=m>0?`${m} min`:''; if(s>0) t+=(t?' ':'')+`${s} sec`; return t||'almost done';
+  }
+  function notify(body){
+    try{
+      if(!notifyOK || Notification.permission!=='granted') return;
+      const n=new Notification('⏳ Task Dash — get back to it!', {
+        body, tag:'taskdash-lockout', renotify:true, silent:false
+      });
+      setTimeout(()=>{ try{ n.close(); }catch(e){} }, 8000);
+    }catch(e){}
+  }
+  function notifyUpdate(){
+    const task=hitTask||'your task';
+    notify(`Work on “${task}”. ${timeLeftPhrase()} left before you can run again.`);
+  }
+
   let player, obstacles, coins, particles;
   let speed, baseSpeed, dist, score, coinCount, best=0, bestCoins=0;
   let runTime=0, bestTime=0, lastLevel=1; // ms the player lasted this run / best ever; current level shown
@@ -726,12 +749,8 @@
     if(e.key==='ArrowLeft'||e.key==='a')moveLeft();
     else if(e.key==='ArrowRight'||e.key==='d')moveRight();
     else if(e.key==='ArrowUp'||e.key==='w'||e.key===' ')jump();
-    else if(e.key==='ArrowDown'||e.key==='s'){ if(state===STATE.PLAY){ if(!player.rolling)roll(); player.duckHeld=true; } }
+    else if(e.key==='ArrowDown'||e.key==='s')roll();
   },{passive:false});
-  window.addEventListener('keyup',e=>{
-    if(twoP){ twoPKeyUp(e); return; }
-    if(e.key==='ArrowDown'||e.key==='s'){ if(player){ player.duckHeld=false; player.rolling=false; player.rollT=0; } }
-  });
 
   // touch / swipe — acts as soon as the swipe passes a small threshold (fast response)
   let tStartX=0,tStartY=0,tConsumed=false;
@@ -812,6 +831,7 @@
     const t = readTasks();
     if(!t.length) return;
     tasks = t;
+    ensureNotifyPermission();   // ask once, on this click, so lockout reminders can pop as OS notifications
     startGame();
   }
 
@@ -953,11 +973,12 @@
     if(countdownTimer)clearInterval(countdownTimer);
     if(ttsOK && !voiceMuted){ try{ window.speechSynthesis.resume(); }catch(e){} }
     speakUpdate();   // announce immediately
+    notifyUpdate();  // OS notification when the countdown begins
     countdownTimer=setInterval(()=>{
       countdownLeft--;
       if(ttsOK && !voiceMuted){ try{ window.speechSynthesis.resume(); }catch(e){} } // keep engine awake
       cd.textContent=fmtTime(Math.max(0,countdownLeft));
-      if(countdownLeft>0 && countdownLeft%15===0) speakUpdate();  // every 15s
+      if(countdownLeft>0 && countdownLeft%15===0){ speakUpdate(); notifyUpdate(); }  // every 15s
       if(countdownLeft<=0){
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
@@ -966,6 +987,7 @@
         doneEarlyBtn.style.display='none';
         doneBtn.style.display=''; doneBtn.disabled=false; doneBtn.innerHTML='Done my task,<br>Play Again.';
         speak(`Time's up. You can play again.`);
+        notify('Break over — you can run again! 🏃');
       }
     },1000);
   }
@@ -1023,7 +1045,7 @@
       if(player.y<=0){player.y=0;player.vy=0;player.grounded=true;}
     }
     // roll timer
-    if(player.rolling&&!player.duckHeld){player.rollT-=dt*0.001;if(player.rollT<=0)player.rolling=false;}
+    if(player.rolling){player.rollT-=dt*0.001;if(player.rollT<=0)player.rolling=false;}
     // running leg animation
     if(player.grounded&&!player.rolling)player.legPhase+=dz*0.05;
 
@@ -1569,7 +1591,7 @@
     planSpawns(); planCoins();
     player.x+=(player.targetX-player.x)*Math.min(1,dt*0.035);
     if(!player.grounded){ player.y+=player.vy*f; player.vy-=0.85*f; if(player.y<=0){player.y=0;player.vy=0;player.grounded=true;} }
-    if(player.rolling&&!player.duckHeld){ player.rollT-=dt*0.001; if(player.rollT<=0)player.rolling=false; }
+    if(player.rolling){ player.rollT-=dt*0.001; if(player.rollT<=0)player.rolling=false; }
     if(player.grounded&&!player.rolling)player.legPhase+=dz*0.05;
     for(const o of obstacles)o.z-=dz;
     for(const c of coins)c.z-=dz;
@@ -1732,9 +1754,7 @@
   // controls: P1 = W A S D, P2 = arrow keys
   function pmove(Wld,d){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; const nx=Math.max(-1,Math.min(1,pl.targetX+d)); if(nx!==pl.targetX){pl.targetX=nx;SFX.lane();} }
   function pjump(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(pl.grounded&&!pl.rolling){pl.vy=15.5;pl.grounded=false;SFX.jump();} }
-  function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; if(!pl.rolling)SFX.roll(); pl.rolling=true; pl.rollT=0.55; pl.duckHeld=true; }
-  function pduckEnd(Wld){ const pl=Wld.player; if(pl){ pl.duckHeld=false; pl.rolling=false; pl.rollT=0; } }
-  function twoPKeyUp(e){ const k=e.key; if(k==='s'||k==='S')pduckEnd(W1); else if(k==='ArrowDown')pduckEnd(W2); }
+  function pduck(Wld){ const pl=Wld.player; if(!pl||pl.dead||Wld.done)return; if(!pl.grounded)pl.vy=-18; pl.rolling=true; pl.rollT=0.55; SFX.roll(); }
   function twoPKey(e){
     const k=e.key;
     if(twoState!=='play'){ if(k==='Escape')quitTwoPlayer(); return; }
