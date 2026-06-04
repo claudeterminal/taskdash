@@ -21,15 +21,19 @@
     background:radial-gradient(circle at 50% 0%, #2a1a5e 0%, #150a33 60%, #0d0820 100%);
   }
   #stage{position:relative;height:100%;aspect-ratio:9/16;max-width:100%;box-shadow:0 0 80px rgba(0,0,0,.6);}
-  canvas{display:block;width:100%;height:100%;background:#1a1130;}
+  canvas{display:block;width:100%;height:100%;background:#1a1130;transition:filter .2s ease;}
+  #game.blurred{filter:blur(5px);}
 
   .overlay{
     position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;color:#fff;padding:24px;gap:16px;z-index:5;
     background:radial-gradient(circle at 50% 35%, rgba(40,20,90,.55), rgba(10,6,26,.92));
-    backdrop-filter:blur(3px);
   }
   .hidden{display:none!important;}
+  /* task-entry screen: darker + blurrier backdrop so the text reads clearly over the live demo */
+  #startScreen{
+    background:radial-gradient(circle at 50% 35%, rgba(35,17,82,.60), rgba(9,5,23,.95));
+  }
   .title{
     font-family:'Bungee',cursive;line-height:.95;letter-spacing:1px;
     font-size:clamp(38px,12vw,72px);
@@ -110,7 +114,7 @@
     <!-- Start / Task setup -->
     <div id="startScreen" class="overlay">
       <div class="title" style="font-size:clamp(30px,9vw,56px)">Task<span>Dash</span></div>
-      <div class="sub" id="setupSub">Name up to 3 tasks you want to do. Crash into a random one, and you'll be stuck working on it for a few minutes before you can replay.</div>
+      <div class="sub" id="setupSub">Name up to 3 tasks you want to finish today. Crash into a random one, and you'll be stuck working on it for a few minutes before you can replay.</div>
       <div class="tasks">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 1">
         <input class="task-input" type="text" maxlength="38" placeholder="Task 2">
@@ -131,12 +135,12 @@
       <div class="countdown" id="countdown">3:00</div>
       <button class="btn ghost voice-toggle" id="voiceBtn">🔊 Voice on</button>
       <div class="stat-row">
-        <div class="stat"><span class="label">Score</span><span class="v" id="finalScore">0</span></div>
+        <div class="stat"><span class="label">Time</span><span class="v" id="finalScore">0:00</span></div>
         <div class="stat"><span class="label">Coins</span><span class="v gold" id="finalCoins">0</span></div>
         <div class="stat"><span class="label">Distance</span><span class="v" id="finalDist">0m</span></div>
       </div>
       <div class="best" id="bestLine"></div>
-      <button class="btn" id="doneBtn" disabled>Do it first…</button>
+      <button class="btn" id="doneBtn" disabled>Done and Play Again</button>
     </div>
   </div>
 </div>
@@ -213,6 +217,7 @@
 
   let player, obstacles, coins, particles;
   let speed, baseSpeed, dist, score, coinCount, best=0, bestCoins=0;
+  let runTime=0, bestTime=0; // ms the player lasted this run / best ever
   let spawnZ, lastTime, runId;
   let stripeOffset=0, worldShake=0;
 
@@ -228,7 +233,7 @@
     particles = [];
     baseSpeed = 7;            // world units advanced per ~16ms frame
     speed = baseSpeed;
-    dist = 0; score = 0; coinCount = 0;
+    dist = 0; score = 0; coinCount = 0; runTime = 0;
     spawnZ = 1600;
     stripeOffset = 0; worldShake=0;
     lastTime = performance.now();
@@ -283,7 +288,7 @@
 
   function makeObstacle(lx,z){return {lane:lx,z,type:'block',w:56,h:120,label:labelTask()};}
   function makeTrain(lx,z){return {lane:lx,z,type:'train',w:62,h:230,len:520,hue:Math.floor(Math.random()*5),label:labelTask()};}
-  function makeLow(lx,z){return {lane:lx,z,type:'low',w:60,h:60,label:labelTask()};}      // jump
+  function makeLow(lx,z){return {lane:lx,z,type:'low',w:64,h:96,label:labelTask()};}      // jump
   function makeHigh(lx,z){return {lane:lx,z,type:'high',w:60,h:300,gap:120,label:labelTask()};} // roll under
 
   function sprinkleCoins(z, blocked){
@@ -478,6 +483,8 @@
     if(countdownTimer){clearInterval(countdownTimer);countdownTimer=null;}
     stopSpeech();
     state=STATE.START;
+    worldShake=0;     // no shake behind the task screen
+    setBgBlur(true);
     SFX.startBg();   // keep the soundtrack going on the task list
     if(message) document.getElementById('setupSub').textContent=message;
     refreshStartBtn();
@@ -529,23 +536,26 @@
 
   function gameOver(){
     state=STATE.OVER; worldShake=18; SFX.stopBg();
-    best=Math.max(best,Math.floor(score));
+    bestTime=Math.max(bestTime,runTime);
     bestCoins=Math.max(bestCoins,coinCount);
-    document.getElementById('finalScore').textContent=Math.floor(score).toLocaleString();
+    document.getElementById('finalScore').textContent=fmtTime(Math.floor(runTime/1000));
     document.getElementById('finalCoins').textContent=coinCount;
     document.getElementById('finalDist').textContent=Math.floor(dist/10)+'m';
-    document.getElementById('bestLine').textContent='Best  '+best.toLocaleString();
+    document.getElementById('bestLine').textContent='Best  '+fmtTime(Math.floor(bestTime/1000));
     document.getElementById('hitTask').textContent = hitTask || 'a task';
     document.getElementById('hud').classList.add('hidden');
     document.getElementById('overScreen').classList.remove('hidden');
     startLockout(3*60);   // 3:00 minutes
+    // keep the world alive: clear the immediate crash area and set the runner back to running
+    obstacles = obstacles.filter(o=> o.z > 480);
+    player.dead=false; player.y=0; player.vy=0; player.grounded=true; player.rolling=false; player.rollT=0;
   }
 
   function fmtTime(s){ const m=Math.floor(s/60); const ss=String(s%60).padStart(2,'0'); return m+':'+ss; }
   function startLockout(secs){
     countdownLeft=secs;
     const cd=document.getElementById('countdown');
-    doneBtn.disabled=true; doneBtn.textContent='Do it first…';
+    doneBtn.disabled=true; doneBtn.textContent='Done and Play Again';
     cd.textContent=fmtTime(countdownLeft);
     if(countdownTimer)clearInterval(countdownTimer);
     speakUpdate();   // announce immediately
@@ -557,21 +567,45 @@
       if(countdownLeft<=0){
         clearInterval(countdownTimer); countdownTimer=null;
         cd.textContent="Time's up";
-        doneBtn.disabled=false; doneBtn.textContent='Done — Run Again';
+        doneBtn.disabled=false; doneBtn.textContent='Done and Play Again';
         speak(`Time's up. You can play again.`);
       }
     },1000);
   }
 
   // ---- Update ----
-  function update(dt){
+  // auto-pilot used for the background demo during the lockout
+  function demoAI(){
+    let threat=null, td=Infinity;
+    for(const o of obstacles){
+      if(o.z>30 && o.z<950 && Math.abs(o.lane-player.targetX)<0.5 && o.z<td){ threat=o; td=o.z; }
+    }
+    if(threat){
+      if(threat.type==='low'){ if(player.grounded && !player.rolling && threat.z<380){ player.vy=15.5; player.grounded=false; } }
+      else if(threat.type==='high'){ if(!player.rolling && threat.z<340){ player.rolling=true; player.rollT=0.55; } }
+      else {
+        const blocked=new Set();
+        for(const o of obstacles){ if(o.z>0 && o.z<750 && (o.type==='block'||o.type==='train')) blocked.add(o.lane); }
+        const open=LANES.filter(l=>!blocked.has(l));
+        if(open.length) player.targetX = open.reduce((a,b)=> Math.abs(b-player.x)<Math.abs(a-player.x)?b:a);
+      }
+    } else {
+      let coinLane=null, cd=Infinity;
+      for(const c of coins){ if(!c.got && c.z>40 && c.z<700 && c.z<cd){ coinLane=c.lane; cd=c.z; } }
+      player.targetX = coinLane!==null ? coinLane : 0;
+    }
+  }
+
+  function update(dt, live=true){
     // speed ramp
     speed = baseSpeed + Math.min(14, dist*0.0008);
+    if(!live) speed = Math.min(speed, 11); // background demo stays calm
     const dz = speed*(dt/16.67); // world units to advance this frame
     const f = dt/16.67;          // frame-time factor so physics match real time at any refresh rate
     dist += dz;
-    score += dz*0.6;
+    if(live){ score += dz*0.6; runTime += dt; }
     stripeOffset = (stripeOffset + dz) % 240;
+    if(!live) demoAI();
 
     planSpawns();
     planCoins();
@@ -593,22 +627,21 @@
     for(const o of obstacles)o.z-=dz;
     for(const c of coins)c.z-=dz;
 
-    // collisions
-    const pl = Math.round(player.x);
-    for(const o of obstacles){
-      const tailZ = o.type==='train'? -o.len : 0;
-      const front = o.z;
-      // collision band around z=0
-      if(front<70 && front>tailZ-40){
-        const sameLane = Math.abs(o.lane - player.x) < 0.55;
-        if(sameLane){
-          let hit=false;
-          if(o.type==='low'){ hit = player.y < 90; }              // must jump
-          else if(o.type==='high'){ hit = !player.rolling; }       // must roll
-          else { hit = true; }                                     // block/train: must change lane
-          // a bit of grace: only deadly when close to z=0
-          if(hit && front<60 && front>-20 && !o.resolved){
-            o.resolved=true; doCrash(o); return;
+    // collisions (live play only)
+    if(live){
+      for(const o of obstacles){
+        const tailZ = o.type==='train'? -o.len : 0;
+        const front = o.z;
+        if(front<70 && front>tailZ-40){
+          const sameLane = Math.abs(o.lane - player.x) < 0.55;
+          if(sameLane){
+            let hit=false;
+            if(o.type==='low'){ hit = player.y < 90; }
+            else if(o.type==='high'){ hit = !player.rolling; }
+            else { hit = true; }
+            if(hit && front<60 && front>-20 && !o.resolved){
+              o.resolved=true; doCrash(o); return;
+            }
           }
         }
       }
@@ -621,8 +654,9 @@
         const sameLane = Math.abs(c.lane - player.x)<0.5;
         const ph = player.y + (player.rolling?20:55);
         if(sameLane && Math.abs(ph - c.y)<95){
-          c.got=true; coinCount++; score+=15;
-          spawnCoinBurst(c.lane,c.y); SFX.coin();
+          c.got=true;
+          if(live){ coinCount++; score+=15; SFX.coin(); }
+          spawnCoinBurst(c.lane,c.y);
         }
       }
     }
@@ -638,7 +672,7 @@
     if(worldShake>0)worldShake*=0.9;
 
     // HUD
-    document.getElementById('scoreVal').textContent=Math.floor(score).toLocaleString();
+    document.getElementById('scoreVal').textContent=fmtTime(Math.floor(runTime/1000));
     document.getElementById('coinVal').textContent=coinCount;
   }
 
@@ -831,7 +865,7 @@
       const w=o.w*s,h=o.h*s;
       ctx.fillStyle='#ff3b6b';ctx.fillRect(p.x-w,p.y-h,w*2,h);
       ctx.fillStyle='rgba(255,255,255,.16)';ctx.fillRect(p.x-w,p.y-h,w*2,h*0.22); // soft top highlight
-      drawLabel(o.label, p.x, p.y-h*0.46, w*1.85, h*0.85);
+      drawLabel(o.label, p.x, p.y-h*0.5, w*1.95, h*0.92);
     } else if(o.type==='high'){
       const w=o.w*s, topH=o.h*s, gap=o.gap*s;
       // an overhead beam you roll under (gap at bottom)
@@ -931,19 +965,35 @@
   // ---- Main loop ----
   function loop(t){
     const dt=Math.min(40, t-lastTime); lastTime=t;
-    if(state===STATE.PLAY && !player.dead){ update(dt); }
+    if(state===STATE.PLAY && !player.dead){ update(dt, true); }
     else if(state===STATE.PLAY && player.dead){
-      // still update particles during crash freeze
+      // brief crash freeze + shake before the lockout screen appears
       for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=0.4;p.life-=dt*0.002;}
       particles=particles.filter(p=>p.life>0);
       if(worldShake>0)worldShake*=0.9;
     }
+    else if(state===STATE.OVER){ update(dt, false); } // world keeps running behind the lockout overlay
+    else if(state===STATE.START){ update(dt, false); } // and behind the task-entry screen (no shake here)
     draw();
     runId=requestAnimationFrame(loop);
   }
 
-  // boot: render the start screen background
+  function setBgBlur(on){ cvs.classList.toggle('blurred', !!on); }
+  function seedDemo(){
+    // give the home-screen demo something to do right away
+    coinLine(LANES[1], 300, 6);
+    coinLine(LANES[0], 720, 5);
+    coinLine(LANES[2], 1120, 5);
+    obstacles.push(makeLow(LANES[2], 620));
+    obstacles.push(makeHigh(LANES[0], 1240));
+    nextSpawnAt = 1400;
+    nextCoinAt = 220;
+  }
+
+  // boot: start the blurred home-screen demo with content already on the track
   reset();
+  seedDemo();
+  setBgBlur(true);
   draw();
   runId=requestAnimationFrame(loop);
 
